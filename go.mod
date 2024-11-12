@@ -1,4 +1,4 @@
-module ada
+module github.com/ariden/openai-go-assistant
 
 go 1.22.5
 

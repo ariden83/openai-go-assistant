@@ -2,8 +2,8 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
+	"github.com/ariden/openai-go-assistant/secret"
 	"github.com/joho/godotenv"
 	"go/ast"
 	"go/format"
@@ -12,7 +12,6 @@ import (
 	"go/token"
 	"io/ioutil"
 	"log"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,14 +20,16 @@ import (
 	"strings"
 )
 
-const ErrorContextLines = 10 // Nombre de lignes de contexte avant et après
-
 type job struct {
-	apiKey      string
-	maxAttempts int
-	fileDir     string
-	fileName    string
-	step        step
+	apiKey             secret.String
+	maxAttempts        int
+	fileDir            string
+	fileName           string
+	currentStep        step
+	mockOpenAIResponse bool
+	openAIModel        string
+	openAIURL          string
+	openAITemperature  float64
 }
 
 func main() {
@@ -37,80 +38,205 @@ func main() {
 		log.Fatal("Erreur de chargement du fichier .env")
 	}
 
+	// Récupération du modèle OpenAI avec une valeur par défaut
+	model := os.Getenv("OPENAI_MODEL")
+	if model == "" {
+		model = "gpt-3.5-turbo"
+	}
+
 	j := job{
-		apiKey:      os.Getenv("OPENAI_API_KEY"),
-		maxAttempts: 2,
-		fileDir:     "./test",
-		fileName:    "generated_code.go",
-		step:        stepStart,
+		apiKey:             secret.String(os.Getenv("OPENAI_API_KEY")),
+		maxAttempts:        4,
+		fileDir:            "./test",
+		fileName:           "generated_code.go",
+		currentStep:        stepStart,
+		mockOpenAIResponse: true,
+		openAIModel:        model,
+		openAIURL:          "https://api.openai.com/v1/chat/completions",
+		openAITemperature:  0.2,
+	}
+
+	log.Println("Configuration du job:", j)
+
+	// Exécuter go mod init et go mod tidy
+	if err := setupGoMod(j.fileDir); err != nil {
+		fmt.Println("Erreur lors de la configuration des modules Go:", err)
+		return
 	}
 
 	// Instruction initiale pour l'API
 	prompt := "Génère uniquement du code Golang pour une fonction qui affiche 'Hello, world!' sans commentaire ou explication."
 
-	for attempt := 1; attempt <= j.maxAttempts; attempt++ {
-		fmt.Println(fmt.Sprintf("prompt: %s", prompt))
-		// Appel API pour générer du code
-		code, err := j.generateGolangCode(prompt)
-		if err != nil {
-			fmt.Println("Erreur lors de la génération de code:", err)
-			return
+	for _, stepEntry := range stepsOrder {
+		j.currentStep = stepEntry.ValidStep
+
+		if j.currentStep != stepStart {
+			prompt = stepEntry.Prompt
 		}
 
-		if j.step == stepStart {
-			// Écriture du code dans un fichier
-			if err = j.stepStart(code); err != nil {
-				fmt.Println("Erreur lors de l'écriture du fichier:", err)
+		for attempt := 1; attempt <= j.maxAttempts; attempt++ {
+
+			fmt.Println(fmt.Sprintf("prompt: %s", prompt))
+
+			// Appel API pour générer du code
+			code, err := j.generateGolangCode(prompt)
+			if err != nil {
+				fmt.Println("Erreur lors de la génération de code:", err)
 				return
 			}
-		} else if err = j.stepFixCode(code); err != nil {
-			fmt.Println("Erreur lors de l'update du fichier:", err)
-			return
-		}
 
-		// Exécuter go mod init et go mod tidy
-		if err = setupGoMod(j.fileDir); err != nil {
-			fmt.Println("Erreur lors de la configuration des modules Go:", err)
-			return
-		}
-
-		// Exécution de goimports pour corriger les imports manquants
-		if err = fixImports(j.fileDir + "/" + j.fileName); err != nil {
-			fmt.Println("Erreur lors de la correction des imports:", err)
-			return
-		}
-
-		// Exécution du fichier Go
-		output, err := runGolangFile(j.fileDir + "/" + j.fileName)
-		if err != nil {
-
-			j.step = stepError
-
-			errorLine, err := extractLineNumber(output)
-			if err != nil {
-				fmt.Println("Erreur:", err)
+			if j.currentStep == stepStart {
+				// Écriture du code dans un fichier
+				if err = j.stepStart(code); err != nil {
+					fmt.Println("Erreur lors de l'écriture du fichier:", err)
+					return
+				}
+			} else if err = j.stepFixCode(code); err != nil {
+				fmt.Println("Erreur lors de l'update du fichier:", err)
 				return
 			}
-			fmt.Println("Numéro de ligne de l'erreur :", errorLine)
 
-			funcCode, err := extractFunctionFromLine(j.fileDir+"/"+j.fileName, errorLine)
+			// Exécuter go mod init et go mod tidy
+			if err = updateGoMod(j.fileDir); err != nil {
+				fmt.Println("Erreur lors de la configuration des modules Go:", err)
+				return
+			}
+
+			// Exécution de goimports pour corriger les imports manquants
+			if err = fixImports(j.fileDir + "/" + j.fileName); err != nil {
+				fmt.Println("Erreur lors de la correction des imports:", err)
+				return
+			}
+
+			// Exécution du fichier Go
+			output, err := j.runGolangFile()
 			if err != nil {
-				log.Fatalf("Erreur lors de l'extraction de la fonction: %v", err)
-			}
+				j.currentStep = stepEntry.ErrorStep
 
-			fmt.Println("Erreur d'exécution:", output)
-			// Mise à jour de l'instruction pour l'API en ajoutant le retour d'erreur
-			prompt = "Corrige le code suivant qui a généré une erreur:\n\n" + funcCode + "\n\nErreur : " + output + "\n\nsans ajouter de commentaires ou explications"
+				errorLine, err := extractLineNumber(output)
+				if err != nil {
+					fmt.Println("Erreur:", err)
+					return
+				}
+				fmt.Println("Numéro de ligne de l'erreur :", errorLine)
 
-		} else {
-			if j.step != stepOptimize {
-				attempt = 1
-				j.step = stepOptimize
+				funcCode, err := j.extractFunctionFromLine(errorLine)
+				if err != nil {
+					log.Fatalf("Erreur lors de l'extraction de la fonction: %v", err)
+				}
+
+				fmt.Println("Erreur d'exécution:", output)
+				// Mise à jour de l'instruction pour l'API en ajoutant le retour d'erreur
+				prompt = "Corrige le code suivant qui a généré une erreur:\n\n" + funcCode + "\n\nErreur : " + output + "\n\nsans ajouter de commentaires ou explications"
+
+			} else {
+
+				unusedFuncs, err := j.findUnusedFunctions()
+				if err != nil {
+					fmt.Println("Erreur lors de la recherche des fonctions inutilisées:", err)
+					return
+				}
+
+				if err := j.commentUnusedFunctions(unusedFuncs); err != nil {
+					fmt.Println("Erreur lors de la mise en commentaire des fonctions:", err)
+				}
+
+				fmt.Println("Sortie du code: `", output, "`")
+				break
 			}
-			fmt.Println("Sortie du code:", output)
-			break
 		}
 	}
+}
+
+func (j *job) findUnusedFunctions() ([]string, error) {
+	fmt.Println(fmt.Sprintf("Analyse de : %s", j.fileDir+"/"+j.fileName))
+
+	// Construire la commande staticcheck avec le chemin complet
+	cmd := exec.Command("staticcheck", j.fileName)
+
+	// Spécifier le répertoire de travail pour staticcheck
+	cmd.Dir = j.fileDir
+
+	var out bytes.Buffer
+	cmd.Stderr = &out
+	cmd.Stdout = &out
+
+	// Exécuter la commande et capturer les avertissements
+	err := cmd.Run()
+	output := out.String()
+
+	// Si une erreur de statut de sortie est retournée, vérifier si la sortie contient des avertissements U1000
+	if err != nil {
+		fmt.Println("Avertissement ou erreur:", err) // Affiche l'erreur pour diagnostic
+	}
+
+	// Regex pour détecter les fonctions non utilisées signalées par U1000
+	re := regexp.MustCompile(`func (\w+) is unused`)
+	matches := re.FindAllStringSubmatch(output, -1)
+
+	var unusedFuncs []string
+	for _, match := range matches {
+		if len(match) > 1 {
+			unusedFuncs = append(unusedFuncs, match[1])
+		}
+	}
+
+	// Retourner les fonctions inutilisées même si staticcheck a généré une erreur de statut
+	return unusedFuncs, nil // Ignorer l'erreur pour continuer normalement
+}
+
+// Met en commentaire les fonctions inutilisées dans le fichier
+func (j *job) commentUnusedFunctions(funcs []string) error {
+	// Lire le fichier ligne par ligne
+	content, err := os.ReadFile(j.fileDir + "/" + j.fileName)
+	if err != nil {
+		return err
+	}
+
+	// Transformation du contenu en lignes pour faciliter la manipulation
+	lines := bytes.Split(content, []byte("\n"))
+
+	// On crée une liste de lignes modifiées pour reconstruire le fichier avec les commentaires ajoutés
+	var updatedLines [][]byte
+	commentMode := false
+	openBraces := 0
+
+	for _, line := range lines {
+		lineStr := string(line)
+
+		// Si on est en mode commentaire, on ajoute `//` au début de la ligne
+		if commentMode {
+			updatedLines = append(updatedLines, append([]byte("// "), line...))
+
+			// Compter les accolades ouvrantes et fermantes pour détecter la fin de la fonction
+			openBraces += bytes.Count(line, []byte("{"))
+			openBraces -= bytes.Count(line, []byte("}"))
+
+			// Fin du bloc de fonction
+			if openBraces == 0 {
+				commentMode = false
+			}
+			continue
+		}
+
+		// Détection du début de la fonction non utilisée
+		for _, fn := range funcs {
+			if match, _ := regexp.MatchString(fmt.Sprintf(`^func %s\(`, fn), lineStr); match {
+				commentMode = true
+				openBraces = 1 // Initialiser le compte d'accolades pour cette fonction
+				updatedLines = append(updatedLines, append([]byte("// "), line...))
+				break
+			}
+		}
+
+		// Si on n'est pas en mode commentaire, ajouter la ligne telle quelle
+		if !commentMode {
+			updatedLines = append(updatedLines, line)
+		}
+	}
+
+	// Reconstruire le fichier avec les lignes mises à jour
+	return os.WriteFile(j.fileDir+"/"+j.fileName, bytes.Join(updatedLines, []byte("\n")), 0644)
 }
 
 func (j *job) stepStart(code string) error {
@@ -154,7 +280,6 @@ func (j *job) extractFunctionsFromCode(code string) ([]*ast.FuncDecl, error) {
 	return funcs, nil
 }
 
-// Fonction pour extraire les imports d'un code Go sous forme de chaîne
 // Fonction pour extraire les imports d'un code Go sous forme de chaîne
 func extractImportsFromCode(code string) ([]string, error) {
 	// Parser le fichier Go pour en extraire l'AST
@@ -225,7 +350,6 @@ func (j *job) replaceCompleteFunctionsInFile(openAIResponse string) error {
 
 	// Récupérer et réutiliser le package existant
 	packageDecl := node.Name
-	fmt.Println("Package existant :", packageDecl.Name)
 
 	// Ajouter la déclaration du package au fichier modifié
 	fmt.Fprintf(&modifiedFile, "package %s", packageDecl.Name)
@@ -275,7 +399,7 @@ func (j *job) replaceCompleteFunctionsInFile(openAIResponse string) error {
 	}
 
 	// Affichage du code généré juste avant le formatage
-	fmt.Println("Code généré avant formatage:\n", modifiedFile.String())
+	// fmt.Println("Code généré avant formatage:\n", modifiedFile.String())
 
 	// Appliquer un formatage Go standard au code généré
 	formattedCode, err := format.Source(modifiedFile.Bytes())
@@ -285,244 +409,6 @@ func (j *job) replaceCompleteFunctionsInFile(openAIResponse string) error {
 
 	// Sauvegarder le fichier modifié
 	return ioutil.WriteFile(j.fileDir+"/"+j.fileName, formattedCode, 0644)
-}
-
-// Fonction pour envoyer une requête à l'API OpenAI
-func (j *job) generateGolangCode(prompt string) (string, error) {
-
-	requestBody := map[string]interface{}{
-		"model": "gpt-3.5-turbo",
-		"messages": []map[string]string{
-			{"role": "user", "content": prompt},
-		},
-		"temperature": 0.2,
-	}
-
-	jsonData, err := json.Marshal(requestBody)
-	if err != nil {
-		return "", err
-	}
-
-	req, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return "", err
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+j.apiKey)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-
-	var response APIResponse
-	if err = json.Unmarshal(body, &response); err != nil {
-		return "", err
-	}
-
-	response.Error = nil
-
-	if j.step == stepStart {
-		response.Choices = []Choice{
-			{
-				Message: Message{
-					Content: `package main
-
-import (
-	"encoding/json"
-	"fmt"
-	"log"
-)
-
-// Définition des structures correspondant au JSON de réponse valide
-type Choice struct {
-	Index        int    ` + "`" + `json:"index"` + "`" + `
-	Message      Message ` + "`" + `json:"message"` + "`" + `
-	FinishReason string ` + "`" + `json:"finish_reason"` + "`" + `
-}
-
-type Message struct {
-	Role    string ` + "`" + `json:"role"` + "`" + `
-	Content string ` + "`" + `json:"content"` + "`" + `
-}
-
-type Usage struct {
-	PromptTokens     int ` + "`" + `json:"prompt_tokens"` + "`" + `
-	CompletionTokens int ` + "`" + `json:"completion_tokens"` + "`" + `
-	TotalTokens      int ` + "`" + `json:"total_tokens"` + "`" + `
-}
-
-type APIResponse struct {
-	ID      string   ` + "`" + `json:"id"` + "`" + `
-	Object  string   ` + "`" + `json:"object"` + "`" + `
-	Created int64    ` + "`" + `json:"created"` + "`" + `
-	Model   string   ` + "`" + `json:"model"` + "`" + `
-	Choices []Choice ` + "`" + `json:"choices"` + "`" + `
-	Usage   Usage    ` + "`" + `json:"usage"` + "`" + `
-}
-
-func main() {
-	// Exemple de JSON de réponse valide
-	responseJSON := ` + "`" + `
-			{
-				"id": "chatcmpl-12345",
-				"object": "chat.completion",
-				"created": 1689200300,
-				"model": "gpt-3.5-turbo",
-				"choices": [
-			{
-				"index": 0,
-				"message": {
-				"role": "assistant",
-				"content": "This is a test response from the assistant."
-			},
-				"finish_reason": "stop"
-			}
-			],
-				"usage": {
-				"prompt_tokens": 10,
-				"completion_tokens": 20,
-				"total_tokens": 30
-			}
-			}` + "`" + `
-
-	// Parse le JSON de réponse
-	var apiResponse APIResponse
-	err := json.Unmarshal([]byte(responseJSON), &apiResponse)
-	if err != nil {
-		log.Fatalf("Erreur lors du parsing de la réponse JSON: %v", err)
-	}
-
-	data := bytes.NewBufferString(` + "`" + `{"hello":"world","answer":42}` + "`" + `)
-	req, _ := http.NewRequest("PUT", "http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu", data)
-	req.Header.Set("Content-Type", "application/json")
-
-	command, _ := http2curl.GetCurlCommand(req)
-	fmt.Println(command)
-
-	// Affichage des informations extraites
-	fmt.Println("ID:", apiResponse.ID)
-	fmt.Println("Model:", apiResponse.Model)
-	fmt.Println("Contenu du message:", apiResponse.Choices[0].Message.Content)
-	fmt.Println("Nombre total de tokens utilisés:", apiResponse.Usage.TotalTokens)
-
-	writeTest()
-}
-
-func writeTest() {
-		fmt.Println("toto")
-}
-`,
-				},
-			},
-		}
-
-	} else if j.step == stepError {
-		response.Choices = []Choice{
-			{
-				Message: Message{
-					Content: `package main
-
-import (
-	"bytes"
-	"encoding/json"
-	"fmt"
-	"log"
-	"net/http"
-
-	"github.com/moul/http2curl" // Importation de http2curl
-)
-
-type APIResponse struct {
-	ID       string ` + "`" + `json:"id"` + "`" + `
-	Object   string ` + "`" + `json:"object"` + "`" + `
-	Created  int    ` + "`" + `json:"created"` + "`" + `
-	Model    string ` + "`" + `json:"model"` + "`" + `
-	Choices  []struct {
-		Index   int ` + "`" + `json:"index"` + "`" + `
-		Message struct {
-			Role    string ` + "`" + `json:"role"` + "`" + `
-			Content string ` + "`" + `json:"content"` + "`" + `
-		} ` + "`" + `json:"message"` + "`" + `
-		FinishReason string ` + "`" + `json:"finish_reason"` + "`" + `
-	} ` + "`" + `json:"choices"` + "`" + `
-	Usage struct {
-		PromptTokens     int ` + "`" + `json:"prompt_tokens"` + "`" + `
-		CompletionTokens int ` + "`" + `json:"completion_tokens"` + "`" + `
-		TotalTokens      int ` + "`" + `json:"total_tokens"` + "`" + `
-	} ` + "`" + `json:"usage"` + "`" + `
-}
-
-func main() {
-	// JSON de réponse simulée
-	responseJSON := ` + "`" + `
-				{
-					"id": "chatcmpl-12345",
-					"object": "chat.completion",
-					"created": 1689200300,
-					"model": "gpt-3.5-turbo",
-					"choices": [
-				{
-					"index": 0,
-					"message": {
-					"role": "assistant",
-					"content": "This is a test response from the assistant."
-				},
-					"finish_reason": "stop"
-				}
-				],
-					"usage": {
-					"prompt_tokens": 10,
-					"completion_tokens": 20,
-					"total_tokens": 30
-				}
-				}` + "`" + `
-
-	// Parse le JSON de réponse
-	var apiResponse APIResponse
-	err := json.Unmarshal([]byte(responseJSON), &apiResponse)
-	if err != nil {
-		log.Fatalf("Erreur lors du parsing de la réponse JSON: %v", err)
-	}
-
-	// Préparer la requête HTTP
-	data := bytes.NewBufferString(` + "`" + `{"hello":"world","answer":42}` + "`" + `)
-	req, _ := http.NewRequest("PUT", "http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu", data)
-	req.Header.Set("Content-Type", "application/json")
-
-	// Utiliser http2curl pour obtenir la commande cURL correspondante
-	command, _ := http2curl.GetCurlCommand(req)
-	fmt.Println(command)
-
-	// Afficher les informations de la réponse API
-	fmt.Println("ID:", apiResponse.ID)
-	fmt.Println("Model:", apiResponse.Model)
-	fmt.Println("Contenu du message:", apiResponse.Choices[0].Message.Content)
-	fmt.Println("Nombre total de tokens utilisés:", apiResponse.Usage.TotalTokens)
-}
-`,
-				},
-			},
-		}
-	}
-
-	if response.Error != nil {
-		return "", fmt.Errorf("%s: %s", response.Error.Code, response.Error.Message)
-	}
-
-	if len(response.Choices) > 0 {
-		return response.Choices[0].Message.Content, nil
-	}
-
-	return "", fmt.Errorf("could not parse API response")
 }
 
 // Fonction pour écrire le code dans un fichier .go
@@ -546,12 +432,16 @@ func fixImports(filename string) error {
 	return nil
 }
 
-// Fonction pour exécuter le fichier Go et capturer les erreurs
-func runGolangFile(filename string) (string, error) {
-	cmd := exec.Command("go", "run", filename)
+// Fonction pour exécuter le fichier Go et capturer les erreurs.
+func (j *job) runGolangFile() (string, error) {
+	// Spécifier le chemin du répertoire contenant le fichier et le go.mod
+	cmd := exec.Command("go", "run", j.fileName)
+	cmd.Dir = j.fileDir // Définit le répertoire de travail pour utiliser le go.mod dans le sous-dossier test
+
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
+
 	err := cmd.Run()
 	return out.String(), err
 }
@@ -567,8 +457,10 @@ func setupGoMod(dir string) error {
 			return fmt.Errorf("erreur lors de l'initialisation du module: %v - %s", err, output)
 		}
 	}
+	return nil
+}
 
-	// Exécution de go mod tidy pour installer les dépendances
+func updateGoMod(dir string) error {
 	cmdTidy := exec.Command("go", "mod", "tidy")
 	cmdTidy.Dir = dir // Définit le répertoire de travail pour `go mod tidy`
 	if output, err := cmdTidy.CombinedOutput(); err != nil {
@@ -580,7 +472,6 @@ func setupGoMod(dir string) error {
 	if output, err := cmdVendor.CombinedOutput(); err != nil {
 		return fmt.Errorf("erreur lors de l'exécution de go mod vendor: %v - %s", err, output)
 	}
-
 	return nil
 }
 
@@ -603,16 +494,16 @@ func extractLineNumber(errorMessage string) (int, error) {
 	return lineNumber, nil
 }
 
-func extractFunctionFromLine(filename string, lineNumber int) (string, error) {
+func (j *job) extractFunctionFromLine(lineNumber int) (string, error) {
 	// Lire le fichier Go
-	data, err := ioutil.ReadFile(filename)
+	data, err := ioutil.ReadFile(j.fileDir + "/" + j.fileName)
 	if err != nil {
 		return "", fmt.Errorf("erreur lors de la lecture du fichier: %v", err)
 	}
 
 	// Créer un fichier tokeniseur
 	fs := token.NewFileSet()
-	node, err := parser.ParseFile(fs, filename, data, parser.ParseComments)
+	node, err := parser.ParseFile(fs, j.fileDir+"/"+j.fileName, data, parser.ParseComments)
 	if err != nil {
 		return "", fmt.Errorf("erreur lors de l'analyse du fichier: %v", err)
 	}
@@ -640,5 +531,32 @@ func extractFunctionFromLine(filename string, lineNumber int) (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("fonction contenant la ligne %d non trouvée", lineNumber)
+	// Si la ligne ne fait pas partie d'une fonction, retourner les 10 lignes avant et après
+	lines := bytes.Split(data, []byte("\n"))
+	startLine := max(0, lineNumber-10)
+	endLine := min(len(lines), lineNumber+10)
+
+	var surroundingCode bytes.Buffer
+	for i := startLine; i < endLine; i++ {
+		surroundingCode.Write(lines[i])
+		surroundingCode.WriteString("\n")
+	}
+
+	return surroundingCode.String(), nil
+}
+
+// Fonction utilitaire pour obtenir le maximum entre deux entiers
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+// Fonction utilitaire pour obtenir le minimum entre deux entiers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
