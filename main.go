@@ -97,9 +97,8 @@ func main() {
 
 		for attempt := 1; attempt <= j.maxAttempts; attempt++ {
 
-			fmt.Println(fmt.Sprintf("***************************************\nprompt: %s", prompt))
+			fmt.Println(fmt.Sprintf("***************************************(start)\nprompt: %s\n\n*************************************** (end)", prompt))
 
-			// Appel API pour générer du code
 			code, err := j.generateGolangCode(prompt)
 			if err != nil {
 				fmt.Println("Erreur lors de la génération de code:", err)
@@ -132,34 +131,51 @@ func main() {
 			// Exécution du fichier Go
 			output, err := j.runGolangFile()
 			if err != nil {
+				fmt.Println(fmt.Sprintf("------------------------------------ result (failed): \n\n %s", output))
 				j.currentStep = stepEntry.ErrorStep
 
-				errorLine, err := extractLineNumber(output)
-				if err != nil {
-					fmt.Println("Erreur:", err)
-					return
-				}
-				fmt.Println("Numéro de ligne de l'erreur :", errorLine)
+				if j.currentStep == stepAddTestError {
 
-				funcCode, err := j.extractFunctionFromLine(errorLine)
-				if err != nil {
-					log.Fatalf("Erreur lors de l'extraction de la fonction: %v", err)
-				}
+					getFailedTests, err := j.getFailedTests(output)
+					if err != nil {
+						fmt.Println(fmt.Sprintf("erreur lors de la récupération des tests échoués: %v", err))
+						return
+					}
 
-				fmt.Println("Erreur d'exécution:", output)
-				// Mise à jour de l'instruction pour l'API en ajoutant le retour d'erreur
-				prompt = "Corrige le code suivant qui a généré une erreur:\n\n" + funcCode + "\n\nErreur : " + output + "\n\nsans ajouter de commentaires ou explications"
+					if getFailedTests == nil {
+						fmt.Println("Aucun test n'a échoué")
+						return
+					}
+
+					testCode, err := j.getTestCode(getFailedTests)
+					if err != nil {
+						fmt.Println(fmt.Sprintf("erreur lors de la récupération du code des tests échoués: %v", err))
+						return
+					}
+
+					prompt = "Les tests suivants \n\n" + testCode + "\n\n ont retourné les erreurs suivantes: \n\nErreur : " + output + "\n\nrépond sans ajouter de commentaires ou explications"
+
+				} else {
+					funcCode, err := j.extractErrorForPrompt(output)
+					if err != nil {
+						fmt.Println("Erreur:", err)
+						return
+					}
+					fmt.Println("Erreur d'exécution:", output)
+					// Mise à jour de l'instruction pour l'API en ajoutant le retour d'erreur
+					prompt = "Corrige le code suivant qui a généré une erreur:\n\n" + funcCode + "\n\nErreur : " + output + "\n\nrépond sans ajouter de commentaires ou explications"
+				}
 
 			} else {
-
+				fmt.Println(fmt.Sprintf("------------------------------------ result (ok): \n\n %s", output))
 				unusedFuncs, err := j.findUnusedFunctions()
 				if err != nil {
-					fmt.Println("Erreur lors de la recherche des fonctions inutilisées:", err)
+					fmt.Println("error lors de la recherche des fonctions inutilisées:", err)
 					return
 				}
 
 				if err := j.commentUnusedFunctions(unusedFuncs); err != nil {
-					fmt.Println("Erreur lors de la mise en commentaire des fonctions:", err)
+					fmt.Println("error lors de la mise en commentaire des fonctions:", err)
 				}
 
 				fmt.Println("Sortie du code: `", output, "`")
@@ -167,6 +183,19 @@ func main() {
 			}
 		}
 	}
+}
+
+func (j *job) extractErrorForPrompt(output string) (string, error) {
+	errorLine, err := extractLineNumber(output)
+	if err != nil {
+		return "", err
+	}
+	fmt.Println("Numéro de ligne de l'erreur :", errorLine)
+	funcCode, err := j.extractFunctionFromLine(errorLine)
+	if err != nil {
+		return "", fmt.Errorf("erreur lors de l'extraction de la fonction: %v", err)
+	}
+	return funcCode, nil
 }
 
 // ReadFileContent lit le contenu d'un fichier et le retourne sous forme de chaîne de caractères.
@@ -296,10 +325,16 @@ func isCompleteFunction(funcDecl *ast.FuncDecl) bool {
 
 // Fonction pour extraire toutes les fonctions dans un code donné
 func (j *job) extractFunctionsFromCode(code string) ([]*ast.FuncDecl, error) {
+
+	if !strings.HasPrefix(code, "package") {
+		// Ajouter "package main" au début du code
+		code = "package main\n\nimport \"fmt\"\n\n" + code
+	}
+
 	fs := token.NewFileSet()
-	node, err := parser.ParseFile(fs, "generated_code.go", code, parser.ParseComments)
+	node, err := parser.ParseFile(fs, "", code, parser.ParseComments)
 	if err != nil {
-		return nil, fmt.Errorf("erreur lors de l'analyse du code: %v", err)
+		return nil, fmt.Errorf("erreur lors de l'analyse du code : %v", err)
 	}
 
 	var funcs []*ast.FuncDecl
@@ -314,6 +349,12 @@ func (j *job) extractFunctionsFromCode(code string) ([]*ast.FuncDecl, error) {
 
 // Fonction pour extraire les imports d'un code Go sous forme de chaîne
 func extractImportsFromCode(code string) ([]string, error) {
+
+	if !strings.HasPrefix(code, "package") {
+		// Ajouter "package main" au début du code
+		code = "package main\n\nimport \"fmt\"\n\n" + code
+	}
+
 	// Parser le fichier Go pour en extraire l'AST
 	fs := token.NewFileSet()
 	node, err := parser.ParseFile(fs, "", []byte(code), parser.ImportsOnly)
@@ -472,7 +513,7 @@ func (j *job) runGolangFile() (string, error) {
 	// Vérifier si le fichier est un fichier de test
 	if strings.HasSuffix(j.currentFileName, "_test.go") {
 		// Si c'est un fichier de test, utiliser "go test"
-		cmd = exec.Command("go", "test", j.currentFileName)
+		cmd = exec.Command("go", "test", "./...")
 	} else {
 		// Sinon, utiliser "go run" pour exécuter le fichier
 		cmd = exec.Command("go", "run", j.currentFileName)

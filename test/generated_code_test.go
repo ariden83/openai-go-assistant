@@ -48,7 +48,7 @@ func TestParseValidJSONResponse(t *testing.T) {
 // Test de l'analyse JSON avec des données invalides
 func TestParseInvalidJSONResponse(t *testing.T) {
 	t.Run("Parse invalid JSON response", func(t *testing.T) {
-		responseJSON := `{"id": "chatcmpl-12345", "object": chat}` // JSON invalide
+		responseJSON := `{"id": "chatcmpl-12345", "object": chat}`
 		var apiResponse APIResponse
 		err := json.Unmarshal([]byte(responseJSON), &apiResponse)
 
@@ -60,37 +60,49 @@ func TestParseInvalidJSONResponse(t *testing.T) {
 
 // Test de la génération de requêtes HTTP
 func TestHTTPRequestGeneration(t *testing.T) {
-	t.Run("Generate valid HTTP request", func(t *testing.T) {
-		data := bytes.NewBufferString(`{"hello":"world","answer":42}`)
-		req, err := http.NewRequest("PUT", "http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu", data)
+	t.Run("Generate valid HTTP request",
 
-		if err != nil {
-			t.Fatalf("Expected no error, got %v", err)
-		}
-		if req.Method != http.MethodPut {
-			t.Errorf("Expected method PUT, got %s", req.Method)
-		}
-		if req.Header.Get("Content-Type") != "application/json" {
-			t.Errorf("Expected Content-Type 'application/json', got %s", req.Header.Get("Content-Type"))
-		}
-	})
+		func(t *testing.T) {
+			data := bytes.
+				NewBufferString(`{"hello":"world","answer":42}`)
+			req, err := http.NewRequest("PUT", "http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu",
+
+				data)
+			req.Header.
+				Set("Content-Type", "application/json")
+			if err !=
+				nil {
+				t.Fatalf("Expected no error, got %v",
+
+					err)
+			}
+			if req.Method != http.MethodPut {
+				t.Errorf("Expected method PUT, got %s", req.Method)
+			}
+			if req.Header.Get("Content-Type") != "application/json" {
+				t.Errorf("Expected Content-Type 'application/json', got %s",
+
+					req.Header.Get("Content-Type"))
+			}
+		})
 }
 
 // Test de génération de commande cURL à partir d'une requête HTTP
 func TestCurlCommandGeneration(t *testing.T) {
-	t.Run("Generate cURL command from HTTP request", func(t *testing.T) {
-		data := bytes.NewBufferString(`{"hello":"world","answer":42}`)
-		req, _ := http.NewRequest("PUT", "http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu", data)
-		req.Header.Set("Content-Type", "application/json")
+	data := bytes.NewBufferString(`{"hello":"world","answer":42}`)
+	req, _ := http.NewRequest("PUT",
+		"http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu", data)
+	req.Header.
+		Set("Content-Type", "application/json")
+	command, err := http2curl.GetCurlCommand(req)
+	if err !=
+		nil {
+		t.Fatalf("Expected no error generating cURL command, got %v", err)
+	}
+	expectedSnippet := "curl -X 'PUT'"
+	if command.String()[:len(expectedSnippet)] != expectedSnippet {
+		t.Errorf("Expected command to start with %q, got %q",
 
-		command, err := http2curl.GetCurlCommand(req)
-		if err != nil {
-			t.Fatalf("Expected no error generating cURL command, got %v", err)
-		}
-
-		expectedSnippet := "curl -X PUT http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu"
-		if command.String()[:len(expectedSnippet)] != expectedSnippet {
-			t.Errorf("Expected command to start with %q, got %q", expectedSnippet, command)
-		}
-	})
+			expectedSnippet, command)
+	}
 }

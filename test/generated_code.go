@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/joho/godotenv"
 	"moul.io/http2curl"
 )
 
@@ -38,6 +39,10 @@ type APIResponse struct {
 }
 
 func main() {
+	if err :=
+		godotenv.Load(); err != nil {
+		fmt.Println("Erreur de chargement du fichier .env")
+	}
 
 	responseJSON := `
 	{
@@ -62,44 +67,42 @@ func main() {
 	}
 	}` // Parse le JSON de réponse
 	var apiResponse APIResponse
-	err := json.
-		Unmarshal([]byte(responseJSON), &apiResponse)
-	if err != nil {
-		log.Fatalf("Erreur lors du parsing de la réponse JSON: %v", err)
+
+	err := json.Unmarshal([]byte(responseJSON), &apiResponse)
+	if err !=
+		nil {
+		log.Fatalf("Erreur lors du parsing de la réponse JSON: %v",
+			err,
+		)
 	}
-	data := bytes.NewBufferString(`{"hello":"world","answer":42}`)
-	req, err := http.NewRequest("PUT", "http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu",
+	data := bytes.NewBufferString(
+		`{"hello":"world","answer":42}`,
+	)
+	req, err := http.NewRequest("PUT",
+		"http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu",
+
 		data)
 	if err != nil {
 		log.Fatalf("Erreur lors de la création de la requête HTTP: %v",
-			err)
+			err,
+		)
 	}
-	req.
-		Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", "application/json")
 
-	command, err := http2curl.
-		GetCurlCommand(req)
-	if err != nil {
+	command,
+		err := http2curl.GetCurlCommand(req)
+	if err !=
+		nil {
 		log.Fatalf("Erreur lors de la génération de la commande cURL: %v",
 			err)
 	}
-	fmt.Println("Commande cURL générée:",
-		command)
-	fmt.Println("ID:",
+	fmt.Println("Commande cURL générée:", command)
 
-		apiResponse.ID,
-	)
-
+	fmt.Println("ID:", apiResponse.
+		ID)
 	fmt.Println("Model:",
 		apiResponse.Model,
 	)
-
-	fmt.Println("Contenu du message:",
-		apiResponse.
-			Choices[0].Message.Content)
+	fmt.Println("Contenu du message:", apiResponse.Choices[0].Message.Content)
 	fmt.Println("Nombre total de tokens utilisés:", apiResponse.Usage.TotalTokens)
 }
-
-// func writeTest() {
-// 	fmt.Println("toto")
-// }

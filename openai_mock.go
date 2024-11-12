@@ -36,6 +36,14 @@ func (j *job) mockOpenAI(response *APIResponse) {
 				},
 			},
 		}
+	} else if j.currentStep == stepAddTestError {
+		response.Choices = []Choice{
+			{
+				Message: Message{
+					Content: j.mockOpenAIStepAddTestError(),
+				},
+			},
+		}
 	}
 }
 
@@ -76,6 +84,10 @@ type APIResponse struct {
 }
 
 func main() {
+	if err := godotenv.Load(); err != nil {
+		fmt.Println("Erreur de chargement du fichier .env")
+	}
+
 	// Exemple de JSON de réponse valide
 	responseJSON := ` + "`" + `
 			{
@@ -144,6 +156,7 @@ import (
 	"net/http"
 
 	"moul.io/http2curl"
+	"github.com/joho/godotenv"
 )
 
 type APIResponse struct {
@@ -167,6 +180,10 @@ type APIResponse struct {
 }
 
 func main() {
+	if err := godotenv.Load(); err != nil {
+		fmt.Println("Erreur de chargement du fichier .env")
+	}
+
 	// JSON de réponse simulée
 	responseJSON := ` + "`" + `
 				{
@@ -227,6 +244,7 @@ import (
 	"net/http"
 
 	"moul.io/http2curl"
+	"github.com/joho/godotenv"
 )
 
 // Structures correspondant au JSON de réponse
@@ -257,6 +275,10 @@ type APIResponse struct {
 }
 
 func main() {
+	if err := godotenv.Load(); err != nil {
+		fmt.Println("Erreur de chargement du fichier .env")
+	}
+
 	// Exemple de réponse JSON
 	responseJSON := ` + "`" + `
 	{
@@ -392,7 +414,6 @@ func TestHTTPRequestGeneration(t *testing.T) {
 
 // Test de génération de commande cURL à partir d'une requête HTTP
 func TestCurlCommandGeneration(t *testing.T) {
-	t.Run("Generate cURL command from HTTP request", func(t *testing.T) {
 		data := bytes.NewBufferString(` + "`" + `{"hello":"world","answer":42}` + "`" + `)
 		req, _ := http.NewRequest("PUT", "http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu", data)
 		req.Header.Set("Content-Type", "application/json")
@@ -406,7 +427,43 @@ func TestCurlCommandGeneration(t *testing.T) {
 		if command.String()[:len(expectedSnippet)] != expectedSnippet {
 			t.Errorf("Expected command to start with %q, got %q", expectedSnippet, command)
 		}
+}
+`
+}
+
+func (j *job) mockOpenAIStepAddTestError() string {
+	return `func TestHTTPRequestGeneration(t *testing.T) {
+	t.Run("Generate valid HTTP request", func(t *testing.T) {
+		data := bytes.NewBufferString(` + "`" + `{"hello":"world","answer":42}` + "`" + `)
+		req, err := http.NewRequest("PUT", "http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu", data)
+		req.Header.Set("Content-Type", "application/json")
+
+		if err != nil {
+			t.Fatalf("Expected no error, got %v", err)
+		}
+		if req.Method != http.MethodPut {
+			t.Errorf("Expected method PUT, got %s", req.Method)
+		}
+		if req.Header.Get("Content-Type") != "application/json" {
+			t.Errorf("Expected Content-Type 'application/json', got %s", req.Header.Get("Content-Type"))
+		}
 	})
+}
+
+func TestCurlCommandGeneration(t *testing.T) {
+		data := bytes.NewBufferString(` + "`" + `{"hello":"world","answer":42}` + "`" + `)
+		req, _ := http.NewRequest("PUT", "http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu", data)
+		req.Header.Set("Content-Type", "application/json")
+
+		command, err := http2curl.GetCurlCommand(req)
+		if err != nil {
+			t.Fatalf("Expected no error generating cURL command, got %v", err)
+		}
+
+		expectedSnippet := "curl -X 'PUT'"
+		if command.String()[:len(expectedSnippet)] != expectedSnippet {
+			t.Errorf("Expected command to start with %q, got %q", expectedSnippet, command)
+		}
 }
 `
 }
