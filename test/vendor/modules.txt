@@ -1,5 +1,5 @@
-# github.com/moul/http2curl v1.0.0
-## explicit
-github.com/moul/http2curl
 # github.com/smartystreets/goconvey v1.8.1
 ## explicit; go 1.18
+# moul.io/http2curl v1.0.0
+## explicit
+moul.io/http2curl

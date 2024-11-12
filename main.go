@@ -3,8 +3,6 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"github.com/ariden/openai-go-assistant/secret"
-	"github.com/joho/godotenv"
 	"go/ast"
 	"go/format"
 	"go/parser"
@@ -18,6 +16,10 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/joho/godotenv"
+
+	"github.com/ariden/openai-go-assistant/secret"
 )
 
 type job struct {
@@ -25,6 +27,7 @@ type job struct {
 	maxAttempts        int
 	fileDir            string
 	fileName           string
+	currentFileName    string
 	currentStep        step
 	mockOpenAIResponse bool
 	openAIModel        string
@@ -50,6 +53,7 @@ func main() {
 		fileDir:            "./test",
 		fileName:           "generated_code.go",
 		currentStep:        stepStart,
+		currentFileName:    "generated_code.go",
 		mockOpenAIResponse: true,
 		openAIModel:        model,
 		openAIURL:          "https://api.openai.com/v1/chat/completions",
@@ -59,7 +63,7 @@ func main() {
 	log.Println("Configuration du job:", j)
 
 	// Exécuter go mod init et go mod tidy
-	if err := setupGoMod(j.fileDir); err != nil {
+	if err := j.setupGoMod(); err != nil {
 		fmt.Println("Erreur lors de la configuration des modules Go:", err)
 		return
 	}
@@ -69,14 +73,31 @@ func main() {
 
 	for _, stepEntry := range stepsOrder {
 		j.currentStep = stepEntry.ValidStep
+		j.currentFileName = j.fileName
 
 		if j.currentStep != stepStart {
 			prompt = stepEntry.Prompt
+
+			fileContent, err := j.readFileContent()
+			if err != nil {
+				fmt.Println("Erreur lors de la récupération du nom du contenu du fichier courant :", err)
+				return
+			}
+			prompt += "\n\n" + fileContent
+		}
+
+		if j.currentStep == stepAddTest {
+			testFileName, err := j.getTestFilename()
+			if err != nil {
+				fmt.Println("Erreur lors de la récupération du nom du fichier de test :", err)
+				return
+			}
+			j.currentFileName = testFileName
 		}
 
 		for attempt := 1; attempt <= j.maxAttempts; attempt++ {
 
-			fmt.Println(fmt.Sprintf("prompt: %s", prompt))
+			fmt.Println(fmt.Sprintf("***************************************\nprompt: %s", prompt))
 
 			// Appel API pour générer du code
 			code, err := j.generateGolangCode(prompt)
@@ -85,7 +106,7 @@ func main() {
 				return
 			}
 
-			if j.currentStep == stepStart {
+			if j.currentStep == stepStart || j.currentStep == stepAddTest {
 				// Écriture du code dans un fichier
 				if err = j.stepStart(code); err != nil {
 					fmt.Println("Erreur lors de l'écriture du fichier:", err)
@@ -97,13 +118,13 @@ func main() {
 			}
 
 			// Exécuter go mod init et go mod tidy
-			if err = updateGoMod(j.fileDir); err != nil {
+			if err = j.updateGoMod(); err != nil {
 				fmt.Println("Erreur lors de la configuration des modules Go:", err)
 				return
 			}
 
 			// Exécution de goimports pour corriger les imports manquants
-			if err = fixImports(j.fileDir + "/" + j.fileName); err != nil {
+			if err = j.fixImports(); err != nil {
 				fmt.Println("Erreur lors de la correction des imports:", err)
 				return
 			}
@@ -148,11 +169,22 @@ func main() {
 	}
 }
 
+// ReadFileContent lit le contenu d'un fichier et le retourne sous forme de chaîne de caractères.
+func (j *job) readFileContent() (string, error) {
+	// Lire tout le contenu du fichier
+	data, err := ioutil.ReadFile(j.fileDir + "/" + j.fileName)
+	if err != nil {
+		return "", fmt.Errorf("erreur lors de la lecture du fichier %s: %v", j.fileDir+"/"+j.fileName, err)
+	}
+	// Retourner le contenu sous forme de chaîne
+	return string(data), nil
+}
+
 func (j *job) findUnusedFunctions() ([]string, error) {
-	fmt.Println(fmt.Sprintf("Analyse de : %s", j.fileDir+"/"+j.fileName))
+	fmt.Println(fmt.Sprintf("Analyse de : %s", j.fileDir+"/"+j.currentFileName))
 
 	// Construire la commande staticcheck avec le chemin complet
-	cmd := exec.Command("staticcheck", j.fileName)
+	cmd := exec.Command("staticcheck", j.currentFileName)
 
 	// Spécifier le répertoire de travail pour staticcheck
 	cmd.Dir = j.fileDir
@@ -188,7 +220,7 @@ func (j *job) findUnusedFunctions() ([]string, error) {
 // Met en commentaire les fonctions inutilisées dans le fichier
 func (j *job) commentUnusedFunctions(funcs []string) error {
 	// Lire le fichier ligne par ligne
-	content, err := os.ReadFile(j.fileDir + "/" + j.fileName)
+	content, err := os.ReadFile(j.fileDir + "/" + j.currentFileName)
 	if err != nil {
 		return err
 	}
@@ -236,7 +268,7 @@ func (j *job) commentUnusedFunctions(funcs []string) error {
 	}
 
 	// Reconstruire le fichier avec les lignes mises à jour
-	return os.WriteFile(j.fileDir+"/"+j.fileName, bytes.Join(updatedLines, []byte("\n")), 0644)
+	return os.WriteFile(j.fileDir+"/"+j.currentFileName, bytes.Join(updatedLines, []byte("\n")), 0644)
 }
 
 func (j *job) stepStart(code string) error {
@@ -322,7 +354,7 @@ func (j *job) replaceCompleteFunctionsInFile(openAIResponse string) error {
 	}
 
 	// Lire le fichier Go existant
-	data, err := ioutil.ReadFile(j.fileDir + "/" + j.fileName)
+	data, err := ioutil.ReadFile(j.fileDir + "/" + j.currentFileName)
 	if err != nil {
 		return fmt.Errorf("erreur lors de la lecture du fichier: %v", err)
 	}
@@ -340,7 +372,7 @@ func (j *job) replaceCompleteFunctionsInFile(openAIResponse string) error {
 
 	// Créer un fichier tokeniseur
 	fs := token.NewFileSet()
-	node, err := parser.ParseFile(fs, j.fileDir+"/"+j.fileName, data, parser.ParseComments)
+	node, err := parser.ParseFile(fs, j.fileDir+"/"+j.currentFileName, data, parser.ParseComments)
 	if err != nil {
 		return fmt.Errorf("erreur lors de l'analyse du fichier: %v", err)
 	}
@@ -408,17 +440,18 @@ func (j *job) replaceCompleteFunctionsInFile(openAIResponse string) error {
 	}
 
 	// Sauvegarder le fichier modifié
-	return ioutil.WriteFile(j.fileDir+"/"+j.fileName, formattedCode, 0644)
+	return ioutil.WriteFile(j.fileDir+"/"+j.currentFileName, formattedCode, 0644)
 }
 
 // Fonction pour écrire le code dans un fichier .go
 func (j *job) writeCodeToFile(code string) error {
-	return ioutil.WriteFile(j.fileDir+"/"+j.fileName, []byte(code), 0644)
+	return ioutil.WriteFile(j.fileDir+"/"+j.currentFileName, []byte(code), 0644)
 }
 
-func fixImports(filename string) error {
+func (j *job) fixImports() error {
 	// Commande pour exécuter goimports
-	cmd := exec.Command("goimports", "-w", filename)
+	cmd := exec.Command("goimports", "-w", j.currentFileName)
+	cmd.Dir = j.fileDir
 
 	// Exécution de la commande
 	var out bytes.Buffer
@@ -434,25 +467,39 @@ func fixImports(filename string) error {
 
 // Fonction pour exécuter le fichier Go et capturer les erreurs.
 func (j *job) runGolangFile() (string, error) {
-	// Spécifier le chemin du répertoire contenant le fichier et le go.mod
-	cmd := exec.Command("go", "run", j.fileName)
-	cmd.Dir = j.fileDir // Définit le répertoire de travail pour utiliser le go.mod dans le sous-dossier test
+	var cmd *exec.Cmd
 
+	// Vérifier si le fichier est un fichier de test
+	if strings.HasSuffix(j.currentFileName, "_test.go") {
+		// Si c'est un fichier de test, utiliser "go test"
+		cmd = exec.Command("go", "test", j.currentFileName)
+	} else {
+		// Sinon, utiliser "go run" pour exécuter le fichier
+		cmd = exec.Command("go", "run", j.currentFileName)
+	}
+
+	// Spécifier le répertoire contenant le fichier et le go.mod
+	cmd.Dir = j.fileDir
+
+	// Préparer le buffer pour capturer la sortie
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
 
+	// Exécuter la commande
 	err := cmd.Run()
+
+	// Retourner la sortie de la commande et l'erreur éventuelle
 	return out.String(), err
 }
 
 // Fonction pour exécuter `go mod init` et `go mod tidy`
-func setupGoMod(dir string) error {
+func (j *job) setupGoMod() error {
 	// Initialisation du module si le fichier go.mod n'existe pas
-	goModPath := filepath.Join(dir, "go.mod")
+	goModPath := filepath.Join(j.fileDir, "go.mod")
 	if _, err := os.Stat(goModPath); os.IsNotExist(err) {
 		cmdInit := exec.Command("go", "mod", "init", "generated_code_module")
-		cmdInit.Dir = dir // Définit le répertoire de travail pour `go mod init`
+		cmdInit.Dir = j.fileDir // Définit le répertoire de travail pour `go mod init`
 		if output, err := cmdInit.CombinedOutput(); err != nil {
 			return fmt.Errorf("erreur lors de l'initialisation du module: %v - %s", err, output)
 		}
@@ -460,15 +507,15 @@ func setupGoMod(dir string) error {
 	return nil
 }
 
-func updateGoMod(dir string) error {
+func (j *job) updateGoMod() error {
 	cmdTidy := exec.Command("go", "mod", "tidy")
-	cmdTidy.Dir = dir // Définit le répertoire de travail pour `go mod tidy`
+	cmdTidy.Dir = j.fileDir // Définit le répertoire de travail pour `go mod tidy`
 	if output, err := cmdTidy.CombinedOutput(); err != nil {
 		return fmt.Errorf("erreur lors de l'exécution de go mod tidy: %v - %s", err, output)
 	}
 
 	cmdVendor := exec.Command("go", "mod", "vendor")
-	cmdVendor.Dir = dir // Définit le répertoire de travail pour `go mod vendor`
+	cmdVendor.Dir = j.fileDir // Définit le répertoire de travail pour `go mod vendor`
 	if output, err := cmdVendor.CombinedOutput(); err != nil {
 		return fmt.Errorf("erreur lors de l'exécution de go mod vendor: %v - %s", err, output)
 	}
@@ -496,14 +543,14 @@ func extractLineNumber(errorMessage string) (int, error) {
 
 func (j *job) extractFunctionFromLine(lineNumber int) (string, error) {
 	// Lire le fichier Go
-	data, err := ioutil.ReadFile(j.fileDir + "/" + j.fileName)
+	data, err := ioutil.ReadFile(j.fileDir + "/" + j.currentFileName)
 	if err != nil {
 		return "", fmt.Errorf("erreur lors de la lecture du fichier: %v", err)
 	}
 
 	// Créer un fichier tokeniseur
 	fs := token.NewFileSet()
-	node, err := parser.ParseFile(fs, j.fileDir+"/"+j.fileName, data, parser.ParseComments)
+	node, err := parser.ParseFile(fs, j.fileDir+"/"+j.currentFileName, data, parser.ParseComments)
 	if err != nil {
 		return "", fmt.Errorf("erreur lors de l'analyse du fichier: %v", err)
 	}
