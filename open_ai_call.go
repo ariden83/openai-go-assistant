@@ -61,5 +61,5 @@ func (j *job) generateGolangCode(prompt string) (string, error) {
 		return response.Choices[0].Message.Content, nil
 	}
 
-	return "", fmt.Errorf("could not parse API response")
+	return "", fmt.Errorf(j.t("could not parse API response"))
 }

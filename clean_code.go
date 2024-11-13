@@ -73,14 +73,14 @@ func (j *job) fixImports() error {
 	cmd.Stderr = &out
 	err := cmd.Run()
 	if err != nil {
-		return fmt.Errorf("erreur lors de l'exécution de goimports: %v - %s", err, out.String())
+		return fmt.Errorf(j.t("error running goimports")+": %v - %s", err, out.String())
 	}
 
 	return nil
 }
 
 func (j *job) findUnusedFunctions() ([]string, error) {
-	fmt.Println(fmt.Sprintf("Analyse de : %s", j.fileDir+"/"+j.currentFileName))
+	fmt.Println(fmt.Sprintf(j.t("Analysis of")+" : %s", j.fileDir+"/"+j.currentFileName))
 
 	// Construire la commande staticcheck avec le chemin complet
 	cmd := exec.Command("staticcheck", j.currentFileName)
@@ -98,7 +98,7 @@ func (j *job) findUnusedFunctions() ([]string, error) {
 
 	// Si une erreur de statut de sortie est retournée, vérifier si la sortie contient des avertissements U1000
 	if err != nil {
-		fmt.Println("Avertissement ou erreur:", err) // Affiche l'erreur pour diagnostic
+		fmt.Println(j.t("Warning or error")+":", err) // Affiche l'erreur pour diagnostic
 	}
 
 	// Regex pour détecter les fonctions non utilisées signalées par U1000

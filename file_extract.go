@@ -24,7 +24,7 @@ func (j *job) extractFunctionsFromCode(code string) ([]*ast.FuncDecl, error) {
 	fs := token.NewFileSet()
 	node, err := parser.ParseFile(fs, "", code, parser.ParseComments)
 	if err != nil {
-		return nil, fmt.Errorf("erreur lors de l'analyse du code : %v", err)
+		return nil, fmt.Errorf(j.t("error parsing code")+" : %v", err)
 	}
 
 	var funcs []*ast.FuncDecl

@@ -110,37 +110,37 @@ func (j *job) promptSelectOrCreateDirectory() (string, error) {
 	// Lire les dossiers existants dans le répertoire racine
 	directories, err := j.getDirectories()
 	if err != nil {
-		return "", fmt.Errorf("erreur lors de la lecture des dossiers: %v", err)
+		return "", fmt.Errorf(j.t("error when reading folders")+": %v", err)
 	}
 
 	// Ajouter l'option de création de nouveau chemin
-	directories = append(directories, "Create a new folder")
+	directories = append(directories, j.t("Create a new folder"))
 
 	// Sélection de l'option
 	selectPrompt := promptui.Select{
-		Label: "Choose a folder",
+		Label: j.t("Choose a folder"),
 		Items: directories,
 	}
 
 	_, selectedDir, err := selectPrompt.Run()
 	if err != nil {
-		return "", fmt.Errorf("error while selecting folder: %v", err)
+		return "", fmt.Errorf(j.t("error while selecting folder")+": %v", err)
 	}
 
 	// Si l'utilisateur choisit "Créer un nouveau dossier", demander le chemin
-	if selectedDir == "Create a new folder" {
+	if selectedDir == j.t("Create a new folder") {
 		pathPrompt := promptui.Prompt{
-			Label: "Enter the path of the new folder",
+			Label: j.t("Enter the path of the new folder"),
 			Validate: func(input string) error {
 				if len(input) == 0 {
-					return fmt.Errorf("the path cannot be empty")
+					return fmt.Errorf(j.t("the path cannot be empty"))
 				}
 				return nil
 			},
 		}
 		selectedDir, err = pathPrompt.Run()
 		if err != nil {
-			return "", fmt.Errorf("error entering path: %v", err)
+			return "", fmt.Errorf(j.t("error entering path")+": %v", err)
 		}
 	}
 
@@ -148,7 +148,7 @@ func (j *job) promptSelectOrCreateDirectory() (string, error) {
 }
 
 func (j *job) promptCreateANewFile() error {
-	fmt.Println("Select a folder or enter a new path :")
+	fmt.Println(j.t("Select a folder or enter a new path") + " :")
 	selectedDir, err := j.promptSelectOrCreateDirectory()
 	if err != nil {
 		return err
@@ -156,10 +156,10 @@ func (j *job) promptCreateANewFile() error {
 
 	// Prompt pour entrer le nom du fichier si confirmation est "Oui"
 	filenamePrompt := promptui.Prompt{
-		Label: "Enter the file name",
+		Label: j.t("Enter the file name"),
 		Validate: func(input string) error {
 			if len(input) == 0 {
-				return fmt.Errorf("file name cannot be empty")
+				return fmt.Errorf(j.t("file name cannot be empty"))
 			}
 			return nil
 		},
@@ -171,7 +171,7 @@ func (j *job) promptCreateANewFile() error {
 	// Lire le nom du fichier
 	filename, err := filenamePrompt.Run()
 	if err != nil {
-		log.Fatalf("Erreur lors de la saisie du nom du fichier: %v", err)
+		log.Fatalf(j.t("Error entering file name")+": %v", err)
 	}
 
 	filename = selectedDir + "/" + filename
@@ -187,7 +187,7 @@ func (j *job) promptCreateANewFile() error {
 	// Créer les dossiers nécessaires si le chemin contient un sous-dossier
 	if dir != "." {
 		if err := os.MkdirAll(j.fileDir, 0755); err != nil {
-			log.Fatalf("Erreur lors de la création des dossiers: %v", err)
+			log.Fatalf(j.t("Error creating folders")+": %v", err)
 		}
 	}
 
@@ -195,15 +195,15 @@ func (j *job) promptCreateANewFile() error {
 
 	// Créer le fichier avec le nom donné
 	if err = j.createFileWithPackage(fileNameWithExt); err != nil {
-		log.Fatalf("Erreur lors de la création du fichier: %v", err)
+		log.Fatalf(j.t("Error creating file")+": %v", err)
 	}
 
 	// Extraire uniquement le nom du fichier avec l'extension
 
 	// Afficher le fichier et son chemin
-	fmt.Println("Selected file:", filename)
-	fmt.Println("File path:", j.fileDir)
-	fmt.Println("File name with extension:", fileNameWithExt)
+	fmt.Println(j.t("Selected file")+":", filename)
+	fmt.Println(j.t("File path")+":", j.fileDir)
+	fmt.Println(j.t("File name with extension")+":", fileNameWithExt)
 
 	// Mettre à jour les champs de la struct `job`
 	j.fileName = fileNameWithExt        // Chemin complet du fichier sélectionné
