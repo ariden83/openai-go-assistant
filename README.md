@@ -2,6 +2,8 @@
 
 **OpenAI Go Assistant** is a Go project that allows you to interact with the OpenAI API to automate various code generation and optimization operations. Designed for developers, this wizard makes creating Go code easy by offering advanced features, such as generating code from natural instructions, optimizing existing code, fixing errors, and adding unit tests.
 
+![openai-go-assistant](./doc/openai-go-assistant.gif)
+
 ## Features
 
 - **Code generation**: Create Go code from simple natural language instructions by leveraging the power of the OpenAI API. The wizard generates initial code for functions, structures, algorithms, and more.

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strings"
 )
 
 // Fonction pour envoyer une requête à l'API OpenAI
@@ -62,4 +63,9 @@ func (j *job) generateGolangCode(prompt string) (string, error) {
 	}
 
 	return "", fmt.Errorf(j.t("could not parse API response"))
+}
+
+func (j *job) responseToBool(messContent string) bool {
+	responseText := strings.TrimSpace(messContent)
+	return responseText == "true"
 }

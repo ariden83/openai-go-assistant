@@ -28,7 +28,7 @@
   "Error printing function": "Erreur lors de l'impression de la fonction",
   "Optimize this Golang code taking into account readability, performance, and best practices. Only change behavior if it can be improved for more efficient or safer use cases. Return optimizations made, without comment or explanation. Here is the code: \nHere is the Golang code:\n\n": "Optimisez ce code Golang en tenant compte de la lisibilité, des performances et des meilleures pratiques. Ne changez le comportement que s'il peut être amélioré pour des cas d'utilisation plus efficaces ou plus sûrs. Renvoyez les optimisations effectuées, sans commentaire ni explication. Voici le code: \nVoici le code Golang:\n\n",
   "I have some Golang code that I would like to enrich with unit tests. Can you generate the tests for the nominal cases as well as the error cases, without comment or explanation? My goal is to ensure comprehensive coverage, particularly for:\n\nExpected success scenarios (nominal cases)\nError handling scenarios\nPlease structure the tests to be easily readable, using t.Run to name each test case. Provide succinct comments to explain each test. \nHere is the Golang code:": "J'ai un code Golang que j'aimerais enrichir avec des tests unitaires. Pouvez-vous me générer les tests pour les cas nominaux ainsi que pour les cas d'erreurs, sans commentaire ou explication ? Mon objectif est d'assurer une couverture complète, en particulier pour :\n\nLes scénarios de succès attendus (cas nominaux)\nLes scénarios de gestion des erreurs\nVeuillez structurer les tests pour être facilement lisibles, en utilisant t.Run pour nommer chaque cas de test. Fournissez des commentaires succincts pour expliquer chaque test. \nVoici le code Golang :\n\n",
-  "Enter your question or request to the OpenAI API": "Entrez votre question ou demande à l'API OpenAI",
+  "Enter your question or request to the OpenAI API": "Entrez votre question ou demande à l'API OpenAI concernant du code GOLANG",
   "error when entering question": "erreur lors de la saisie de la question",
   "Files found in repo %s, create one": "Fichiers trouvés dans le repo %s, en créer un",
   "Error selecting file": "Erreur lors de la sélection du fichier",
@@ -51,5 +51,9 @@
   "Warning or error": "Avertissement ou erreur",
   "error parsing code": "erreur d'analyse du code",
   "error running goimports": "erreur lors de l'exécution de goimports",
-  "Analysis of": "Analyse de"
+  "Analysis of": "Analyse de",
+    "Responds with true or false in JSON. Is the following question a request for Go code": "Répond avec vrai ou faux en JSON. La question suivante est-elle une demande de code GOLANG",
+  "The question is not a request for Go code": "La question n'est pas une demande de code GOLANG",
+  "Write code in Go to solve the following problem": "Écrivez du code en GOLANG pour résoudre le problème suivant",
+  "Error checking prompt": "Erreur lors de la vérification du prompt"
 }

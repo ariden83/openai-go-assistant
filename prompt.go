@@ -12,6 +12,13 @@ import (
 	"github.com/manifoldco/promptui"
 )
 
+func (j *job) prepareGoPrompt(userPrompt string) string {
+	// Ajouter le contexte pour spécifier que la question porte sur du code Go
+	goContextPrefix := j.t("Write code in Go to solve the following problem") + " :\n\n"
+	goContextSuffix := "\n\n" + j.t("Reply without comment or explanation")
+	return goContextPrefix + userPrompt + goContextSuffix
+}
+
 func (j *job) loadFilesFromFolder() ([]string, error) {
 	var files []string
 	err := filepath.Walk(j.fileDir, func(path string, info os.FileInfo, err error) error {

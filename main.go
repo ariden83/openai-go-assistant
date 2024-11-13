@@ -58,7 +58,7 @@ func main() {
 		maxAttempts:        4,
 		fileDir:            fileDir,
 		fileName:           "main.go",
-		currentStep:        stepStart,
+		currentStep:        stepVerifyPrompt,
 		currentFileName:    "main.go",
 		lang:               lang,
 		mockOpenAIResponse: true,
@@ -99,13 +99,28 @@ func (j *job) run() {
 		log.Fatalf("Erreur : %v", err)
 	}
 
-	prompt += ". " + j.t("Reply without comment or explanation")
+	prompt = j.prepareGoPrompt(prompt)
 
 	for _, stepEntry := range stepsOrder {
 		j.currentStep = stepEntry.ValidStep
 		j.currentFileName = j.fileName
 
-		if j.currentStep == stepStart {
+		if j.currentStep == stepVerifyPrompt {
+			respContent, err := j.generateGolangCode(fmt.Sprintf(j.t("Responds with true or false in JSON. Is the following question a request for Go code") + " : \"%s\" ?"))
+			if err != nil {
+				fmt.Println(j.t("Error checking prompt"), err)
+				return
+			}
+			if !j.responseToBool(respContent) {
+				fmt.Println(j.t("The question is not a request for Go code"))
+				// restart the job
+				j.run()
+				return
+			}
+			continue
+
+		} else if j.currentStep == stepStart {
+
 			if fileContent, err := j.readFileContent(); err == nil && len(fileContent) > 50 {
 				prompt += ".\n\n" + j.t("Here is the Golang code") + " :\n\n" + fileContent
 			}
