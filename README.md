@@ -37,6 +37,7 @@ Create an **.env** file in the root folder and add your OpenAI API key:
 
 ```env
 OPENAI_API_KEY=your_openai_api_key
+FILE_PATH=./test
 ```
 
 ## Use

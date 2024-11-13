@@ -56,6 +56,16 @@ import (
 	"log"
 )
 
+var data = []byte(` + "`" + `{"hello":"world","answer":42}` + "`" + `)
+
+const (
+	stepStart     = iota
+	stepStartError
+	stepOptimize
+	stepAddTest
+	stepAddTestError	
+)
+
 // Définition des structures correspondant au JSON de réponse valide
 type Choice struct {
 	Index        int    ` + "`" + `json:"index"` + "`" + `
