@@ -23,16 +23,18 @@ type job struct {
 	fileWithVendor     bool
 	currentFileName    string
 	currentStep        step
+	lang               string
 	mockOpenAIResponse bool
 	openAIModel        string
 	openAIURL          string
 	openAITemperature  float64
+	trad               Translations
 }
 
 func main() {
 	// Chargement des variables d'environnement depuis le fichier .env
 	if err := godotenv.Load(); err != nil {
-		log.Fatal("Erreur de chargement du fichier .env")
+		log.Fatal("Error loading .env file")
 	}
 
 	// Récupération du modèle OpenAI avec une valeur par défaut
@@ -46,6 +48,11 @@ func main() {
 		fileDir = "./test"
 	}
 
+	lang := os.Getenv("LANGAGE")
+	if lang == "" {
+		lang = "fr"
+	}
+
 	j := job{
 		apiKey:             secret.String(os.Getenv("OPENAI_API_KEY")),
 		maxAttempts:        4,
@@ -53,10 +60,15 @@ func main() {
 		fileName:           "main.go",
 		currentStep:        stepStart,
 		currentFileName:    "main.go",
+		lang:               lang,
 		mockOpenAIResponse: true,
 		openAIModel:        model,
 		openAIURL:          "https://api.openai.com/v1/chat/completions",
 		openAITemperature:  0.2,
+	}
+
+	if err := j.loadTranslations(); err != nil {
+		log.Fatal(err)
 	}
 
 	j.run()
@@ -66,7 +78,7 @@ func (j *job) run() {
 
 	filesFound, err := j.loadFilesFromFolder()
 	if err != nil {
-		fmt.Println("No files found in the specified folder, a main.go file will be created", err)
+		fmt.Println(j.t("No files found in the specified folder, a main.go file will be created"), err)
 		if err := j.promptNoFilesFoundCreateANewFile(); err != nil {
 			return
 		}
@@ -78,7 +90,7 @@ func (j *job) run() {
 
 	// Exécuter go mod init et go mod tidy
 	if err := j.setupGoMod(); err != nil {
-		fmt.Println("Erreur lors de la configuration des modules Go:", err)
+		fmt.Println(j.t("Error configuring Go modules"), err)
 		return
 	}
 
@@ -87,7 +99,7 @@ func (j *job) run() {
 		log.Fatalf("Erreur : %v", err)
 	}
 
-	prompt += ". Répond sans commentaire ou explication"
+	prompt += ". " + j.t("Reply without comment or explanation")
 
 	for _, stepEntry := range stepsOrder {
 		j.currentStep = stepEntry.ValidStep
@@ -95,15 +107,15 @@ func (j *job) run() {
 
 		if j.currentStep == stepStart {
 			if fileContent, err := j.readFileContent(); err == nil && len(fileContent) > 50 {
-				prompt += ".\n\nVoici le code Golang :\n\n" + fileContent
+				prompt += ".\n\n" + j.t("Here is the Golang code") + " :\n\n" + fileContent
 			}
 
 		} else {
-			prompt = stepEntry.Prompt
+			prompt = j.t(stepEntry.Prompt)
 
 			fileContent, err := j.readFileContent()
 			if err != nil {
-				fmt.Println("Erreur lors de la récupération du nom du contenu du fichier courant :", err)
+				fmt.Println(j.t("Error retrieving the name of the contents of the current file"), err)
 				return
 			}
 			prompt += "\n\n" + fileContent
@@ -112,7 +124,7 @@ func (j *job) run() {
 		if j.currentStep == stepAddTest {
 			testFileName, err := j.getTestFilename()
 			if err != nil {
-				fmt.Println("Erreur lors de la récupération du nom du fichier de test :", err)
+				fmt.Println(j.t("Error retrieving test file name"), err)
 				return
 			}
 			j.currentFileName = testFileName
@@ -120,36 +132,37 @@ func (j *job) run() {
 
 		for attempt := 1; attempt <= j.maxAttempts; attempt++ {
 
-			fmt.Println(fmt.Sprintf("***************************************(start)\nprompt: %s\n\n*************************************** (end)", prompt))
+			fmt.Println(fmt.Sprintf("***************************************(start)\nprompt: %s\n\n"+
+				"*************************************** (end)", prompt))
 
 			code, err := j.generateGolangCode(prompt)
 			if err != nil {
-				fmt.Println("Erreur lors de la génération de code:", err)
+				fmt.Println(j.t("Error generating code"), err)
 				return
 			}
 
 			if j.currentStep == stepAddTest {
 				// Écriture du code dans un fichier
 				if err = j.stepStart(code); err != nil {
-					fmt.Println("Erreur lors de l'écriture du fichier:", err)
+					fmt.Println(j.t("Error writing file"), err)
 					return
 				}
 			}
 
 			if err = j.stepFixCode(code); err != nil {
-				fmt.Println("Erreur lors de l'update du fichier:", err)
+				fmt.Println(j.t("Error updating file"), err)
 				return
 			}
 
 			// Exécuter go mod init et go mod tidy
 			if err = j.updateGoMod(); err != nil {
-				fmt.Println("Erreur lors de la configuration des modules Go:", err)
+				fmt.Println(j.t("Error configuring Go modules"), err)
 				return
 			}
 
 			// Exécution de goimports pour corriger les imports manquants
 			if err = j.fixImports(); err != nil {
-				fmt.Println("Erreur lors de la correction des imports:", err)
+				fmt.Println(j.t("Error correcting imports"), err)
 				return
 			}
 
@@ -163,22 +176,25 @@ func (j *job) run() {
 
 					getFailedTests, err := j.getFailedTests(output)
 					if err != nil {
-						fmt.Println(fmt.Sprintf("erreur lors de la récupération des tests échoués: %v", err))
+						fmt.Println(j.t("Error when recovering failed tests"), err)
 						return
 					}
 
 					if getFailedTests == nil {
-						fmt.Println("Aucun test n'a échoué")
+						fmt.Println(j.t("No test failed"))
 						return
 					}
 
 					testCode, err := j.getTestCode(getFailedTests)
 					if err != nil {
-						fmt.Println(fmt.Sprintf("erreur lors de la récupération du code des tests échoués: %v", err))
+						fmt.Println("Error retrieving failed test code", err)
 						return
 					}
 
-					prompt = "Les tests suivants \n\n" + testCode + "\n\n ont retourné les erreurs suivantes: \n\nErreur : " + output + "\n\nrépond sans ajouter de commentaires ou explications"
+					prompt = j.t("The following tests") + " \n\n" + testCode + "\n\n " +
+						j.t("returned the following errors") + ": \n\n" +
+						j.t("Error") + " : " + output + "\n\n" +
+						j.t("responds without adding comments or explanations")
 
 				} else {
 					funcCode, err := j.extractErrorForPrompt(output)
@@ -186,9 +202,11 @@ func (j *job) run() {
 						fmt.Println("Erreur:", err)
 						return
 					}
-					fmt.Println("Erreur d'exécution:", output)
+					fmt.Println(j.t("Runtime error"), output)
 					// Mise à jour de l'instruction pour l'API en ajoutant le retour d'erreur
-					prompt = "Corrige le code suivant qui a généré une erreur:\n\n" + funcCode + "\n\nErreur : " + output + "\n\nrépond sans ajouter de commentaires ou explications"
+					prompt = j.t("Fix the following code that generated an error") + ":\n\n" + funcCode + "\n\n" +
+						j.t("Error") + " : " + output + "\n\n" +
+						j.t("responds without adding comments or explanations")
 				}
 
 			} else {
@@ -203,12 +221,12 @@ func (j *job) run() {
 					fmt.Println("error lors de la mise en commentaire des fonctions:", err)
 				}*/
 
-				fmt.Println("Sortie du code: `", output, "`")
+				fmt.Println(j.t("Code output")+": `", output, "`")
 				break
 			}
 		}
 	}
-	fmt.Println("End of the job\n\nRestarting the job ?")
+	fmt.Println(j.t("End of the job") + "\n\n" + j.t("Restarting the job ?"))
 	j.run()
 }
 

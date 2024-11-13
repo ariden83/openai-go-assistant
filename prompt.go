@@ -28,7 +28,7 @@ func (j *job) loadFilesFromFolder() ([]string, error) {
 
 func (j *job) promptSelectAFileOrCreateANewOne(filesFound []string) error {
 	confirmPrompt := promptui.Prompt{
-		Label:     fmt.Sprintf("Files found in repo %s, create one", j.fileDir),
+		Label:     fmt.Sprintf(j.t("Files found in repo %s, create one"), j.fileDir),
 		IsConfirm: true,
 	}
 	_, err := confirmPrompt.Run()
@@ -49,7 +49,7 @@ func (j *job) promptSelectExistentFile(filesFound []string) error {
 	// Lire le fichier sélectionné
 	_, selectedFile, err := filePrompt.Run()
 	if err != nil {
-		log.Fatalf("Erreur lors de la sélection du fichier: %v", err)
+		log.Fatalf(j.t("Error selecting file")+": %v", err)
 	}
 
 	fmt.Println("Selected file:", selectedFile)
@@ -230,13 +230,13 @@ func (j *job) createFileWithPackage(filename string) error {
 func (j *job) promptForQuery() (string, error) {
 	// Définir le prompt
 	prompt := promptui.Prompt{
-		Label: "Enter your question or request to the OpenAI API",
+		Label: j.t("Enter your question or request to the OpenAI API"),
 	}
 
 	// Lire la réponse de l'utilisateur
 	query, err := prompt.Run()
 	if err != nil {
-		return "", fmt.Errorf("error when entering question : %v", err)
+		return "", fmt.Errorf(j.t("error when entering question")+" : %v", err)
 	}
 	return query, nil
 }

@@ -16,7 +16,7 @@ import (
 func (j *job) getTestFilename() (string, error) {
 	// Vérifie si le fichier a l'extension .go
 	if filepath.Ext(j.fileName) != ".go" {
-		return "", fmt.Errorf("le fichier %s n'est pas un fichier Go", j.fileName)
+		return "", fmt.Errorf(j.t("file %s is not a Go file"), j.fileName)
 	}
 
 	// Construit le nom du fichier de test en ajoutant "_test" avant l'extension
@@ -74,7 +74,7 @@ func (j *job) getTestCode(failedTests []string) (string, error) {
 	fset := token.NewFileSet()
 	node, err := parser.ParseFile(fset, j.fileDir+"/"+j.currentFileName, nil, parser.ParseComments)
 	if err != nil {
-		return "", fmt.Errorf("Error parsing file: %v\n", err)
+		return "", fmt.Errorf(j.t("Error parsing file"), err)
 	}
 
 	var failedTestsCode strings.Builder
@@ -96,7 +96,7 @@ func (j *job) getTestCode(failedTests []string) (string, error) {
 
 			var buf bytes.Buffer
 			if err := printer.Fprint(&buf, fset, funcDecl); err != nil {
-				fmt.Printf("Error printing function %s: %v\n", fullTestName, err)
+				fmt.Printf(j.t("Error printing function")+" %s: %v\n", fullTestName, err)
 			} else {
 				failedTestsCode.Write(buf.Bytes())
 				failedTestsCode.WriteString("\n\n")
