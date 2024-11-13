@@ -17,9 +17,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/joho/godotenv"
-
 	"github.com/ariden/openai-go-assistant/secret"
+	"github.com/joho/godotenv"
 )
 
 type job struct {
@@ -47,10 +46,15 @@ func main() {
 		model = "gpt-3.5-turbo"
 	}
 
+	fileDir := os.Getenv("FILE_PATH")
+	if fileDir == "" {
+		fileDir = "./test"
+	}
+
 	j := job{
 		apiKey:             secret.String(os.Getenv("OPENAI_API_KEY")),
 		maxAttempts:        4,
-		fileDir:            "./test",
+		fileDir:            fileDir,
 		fileName:           "generated_code.go",
 		currentStep:        stepStart,
 		currentFileName:    "generated_code.go",
@@ -61,6 +65,18 @@ func main() {
 	}
 
 	log.Println("Configuration du job:", j)
+
+	filesFound, err := j.loadFilesFromFolder()
+	if err != nil {
+		fmt.Println("No files found in the specified folder, a main.go file will be created", err)
+		if err := j.promptNoFilesFoundCreateANewFile(); err != nil {
+			return
+		}
+	} else {
+		if err := j.promptSelectAFileOrCreateANewOne(filesFound); err != nil {
+			return
+		}
+	}
 
 	// Exécuter go mod init et go mod tidy
 	if err := j.setupGoMod(); err != nil {
