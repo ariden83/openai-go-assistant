@@ -156,8 +156,7 @@ func (j *job) promptCreateANewFile() error {
 
 	// Prompt pour entrer le nom du fichier si confirmation est "Oui"
 	filenamePrompt := promptui.Prompt{
-		Label:   "Enter the file name",
-		Default: selectedDir,
+		Label: "Enter the file name",
 		Validate: func(input string) error {
 			if len(input) == 0 {
 				return fmt.Errorf("file name cannot be empty")
@@ -175,6 +174,7 @@ func (j *job) promptCreateANewFile() error {
 		log.Fatalf("Erreur lors de la saisie du nom du fichier: %v", err)
 	}
 
+	filename = selectedDir + "/" + filename
 	// Ajouter l'extension .go si elle est absente
 	if !strings.HasSuffix(filename, ".go") {
 		filename += ".go"
@@ -224,4 +224,19 @@ func (j *job) createFileWithPackage(filename string) error {
 	// Ajouter la ligne de package en haut du fichier
 	_, err = file.WriteString(fmt.Sprintf("package %s\n\n", dirName))
 	return err
+}
+
+// Fonction pour demander à l'utilisateur de renseigner sa question
+func (j *job) promptForQuery() (string, error) {
+	// Définir le prompt
+	prompt := promptui.Prompt{
+		Label: "Enter your question or request to the OpenAI API",
+	}
+
+	// Lire la réponse de l'utilisateur
+	query, err := prompt.Run()
+	if err != nil {
+		return "", fmt.Errorf("error when entering question : %v", err)
+	}
+	return query, nil
 }

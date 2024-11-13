@@ -10,8 +10,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/ariden/openai-go-assistant/secret"
 	"github.com/joho/godotenv"
+
+	"github.com/ariden/openai-go-assistant/secret"
 )
 
 type job struct {
@@ -58,7 +59,10 @@ func main() {
 		openAITemperature:  0.2,
 	}
 
-	log.Println("Configuration du job:", j)
+	j.run()
+}
+
+func (j *job) run() {
 
 	filesFound, err := j.loadFilesFromFolder()
 	if err != nil {
@@ -78,14 +82,23 @@ func main() {
 		return
 	}
 
-	// Instruction initiale pour l'API
-	prompt := "Génère uniquement du code Golang pour une fonction qui affiche 'Hello, world!', sans commentaire ou explication."
+	prompt, err := j.promptForQuery()
+	if err != nil {
+		log.Fatalf("Erreur : %v", err)
+	}
+
+	prompt += ". Répond sans commentaire ou explication"
 
 	for _, stepEntry := range stepsOrder {
 		j.currentStep = stepEntry.ValidStep
 		j.currentFileName = j.fileName
 
-		if j.currentStep != stepStart {
+		if j.currentStep == stepStart {
+			if fileContent, err := j.readFileContent(); err == nil && len(fileContent) > 50 {
+				prompt += ".\n\nVoici le code Golang :\n\n" + fileContent
+			}
+
+		} else {
 			prompt = stepEntry.Prompt
 
 			fileContent, err := j.readFileContent()
@@ -195,6 +208,8 @@ func main() {
 			}
 		}
 	}
+	fmt.Println("End of the job\n\nRestarting the job ?")
+	j.run()
 }
 
 func (j *job) stepStart(code string) error {
