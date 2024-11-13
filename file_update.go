@@ -297,6 +297,8 @@ func (j *job) writeCodeToFile(code string) error {
 	defer file.Close()
 
 	fmt.Println("Fichier créé avec succès:", fullPath)
+	dirName := filepath.Base(j.fileDir)
+	_, err = file.WriteString(fmt.Sprintf("package %s\n\n", dirName))
 	return nil
 }
 

@@ -79,7 +79,7 @@ func main() {
 	}
 
 	// Instruction initiale pour l'API
-	prompt := "Génère uniquement du code Golang pour une fonction qui affiche 'Hello, world!' sans commentaire ou explication."
+	prompt := "Génère uniquement du code Golang pour une fonction qui affiche 'Hello, world!', sans commentaire ou explication."
 
 	for _, stepEntry := range stepsOrder {
 		j.currentStep = stepEntry.ValidStep
@@ -180,7 +180,7 @@ func main() {
 
 			} else {
 				fmt.Println(fmt.Sprintf("------------------------------------ result (ok): \n\n %s", output))
-				unusedFuncs, err := j.findUnusedFunctions()
+				/*unusedFuncs, err := j.findUnusedFunctions()
 				if err != nil {
 					fmt.Println("error lors de la recherche des fonctions inutilisées:", err)
 					return
@@ -188,7 +188,7 @@ func main() {
 
 				if err := j.commentUnusedFunctions(unusedFuncs); err != nil {
 					fmt.Println("error lors de la mise en commentaire des fonctions:", err)
-				}
+				}*/
 
 				fmt.Println("Sortie du code: `", output, "`")
 				break

@@ -183,7 +183,7 @@ func (j *job) promptCreateANewFile() error {
 	// Extraire le chemin du dossier
 	dir := filepath.Dir(filename)
 	j.fileDir = j.fileDir + "/" + dir
-	fmt.Println("Dir:", j.fileDir)
+
 	// Créer les dossiers nécessaires si le chemin contient un sous-dossier
 	if dir != "." {
 		if err := os.MkdirAll(j.fileDir, 0755); err != nil {
