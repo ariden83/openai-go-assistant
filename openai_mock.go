@@ -75,6 +75,8 @@ const (
 	stepAddTestError	
 )
 
+type Abser interface {}
+
 // Définition des structures correspondant au JSON de réponse valide
 type Choice struct {
 	Index        int    ` + "`" + `json:"index"` + "`" + `
@@ -178,6 +180,8 @@ import (
 	"github.com/joho/godotenv"
 )
 
+type Abser interface {}
+
 type APIResponse struct {
 	ID       string ` + "`" + `json:"id"` + "`" + `
 	Object   string ` + "`" + `json:"object"` + "`" + `
@@ -265,6 +269,8 @@ import (
 	"moul.io/http2curl"
 	"github.com/joho/godotenv"
 )
+
+type Abser interface {}
 
 // Structures correspondant au JSON de réponse
 type Choice struct {

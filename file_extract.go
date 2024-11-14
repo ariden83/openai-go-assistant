@@ -67,6 +67,36 @@ func (j *job) extractStructsFromCode(code string) ([]*ast.TypeSpec, error) {
 	return structs, nil
 }
 
+func (j *job) extractInterfacesFromCode(code string) ([]*ast.TypeSpec, error) {
+
+	if !strings.HasPrefix(code, "package") {
+		// Ajouter "package main" au début du code
+		code = "package main\n\nimport \"fmt\"\n\n" + code
+	}
+
+	fs := token.NewFileSet()
+	node, err := parser.ParseFile(fs, "", code, parser.ParseComments)
+	if err != nil {
+		return nil, fmt.Errorf("erreur lors de l'analyse du code : %v", err)
+	}
+
+	var interfaces []*ast.TypeSpec
+	for _, decl := range node.Decls {
+		genDecl, ok := decl.(*ast.GenDecl)
+		if ok {
+			for _, spec := range genDecl.Specs {
+				typeSpec, ok := spec.(*ast.TypeSpec)
+				if ok {
+					if _, isInterface := typeSpec.Type.(*ast.InterfaceType); isInterface {
+						interfaces = append(interfaces, typeSpec)
+					}
+				}
+			}
+		}
+	}
+	return interfaces, nil
+}
+
 func (j *job) extractConstsFromCode(code string) ([]*ast.GenDecl, error) {
 
 	if !strings.HasPrefix(code, "package") {

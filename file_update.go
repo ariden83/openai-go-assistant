@@ -90,6 +90,45 @@ func (j *job) replaceCompleteFunctionsInFile(openAIResponse string) error {
 
 	modifiedFile.WriteString("\n\n")
 
+	interfaces, err := j.extractInterfacesFromCode(openAIResponse)
+	if err != nil {
+		return fmt.Errorf("erreur lors de l'extraction des interfaces: %v", err)
+	}
+
+	for _, openAIInterface := range interfaces {
+		found := false // Indique si l'interface OpenAI a été trouvée dans les déclarations existantes
+
+		for _, decl := range node.Decls[1:] {
+			genDecl, ok := decl.(*ast.GenDecl)
+			if ok && genDecl.Tok == token.TYPE {
+				for _, spec := range genDecl.Specs {
+					typeSpec, ok := spec.(*ast.TypeSpec)
+					if ok && typeSpec.Name.Name == openAIInterface.Name.Name {
+						// Remplacer l'interface existante par celle d'OpenAI
+						typeSpec.Type = openAIInterface.Type
+						found = true
+						break
+					}
+				}
+			}
+			if found {
+				break
+			}
+		}
+
+		// Si l'interface n'a pas été trouvée dans les déclarations existantes, l'ajouter
+		if !found {
+			genDecl := &ast.GenDecl{
+				Tok: token.TYPE,
+				Specs: []ast.Spec{&ast.TypeSpec{
+					Name: openAIInterface.Name,
+					Type: openAIInterface.Type,
+				}},
+			}
+			node.Decls = append(node.Decls, genDecl)
+		}
+	}
+
 	constants, err := j.extractConstsFromCode(openAIResponse)
 	if err != nil {
 		return fmt.Errorf("erreur lors de l'extraction des constantes: %v", err)
