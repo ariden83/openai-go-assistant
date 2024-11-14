@@ -106,7 +106,12 @@ func (j *job) run() {
 		j.currentFileName = j.fileName
 
 		if j.currentStep == stepVerifyPrompt {
-			respContent, err := j.generateGolangCode(fmt.Sprintf(j.t("Responds with true or false in JSON. Is the following question a request for Go code") + " : \"%s\" ?"))
+
+			verifPrompt := fmt.Sprintf(j.t("Responds with true or false in JSON. Is the following question a request for Go code")+" : \"%s\" ?", prompt)
+			fmt.Println(fmt.Sprintf("***************************************(start)\nprompt: %s\n\n"+
+				"*************************************** (end)", verifPrompt))
+
+			respContent, err := j.generateGolangCode(verifPrompt)
 			if err != nil {
 				fmt.Println(j.t("Error checking prompt"), err)
 				return
