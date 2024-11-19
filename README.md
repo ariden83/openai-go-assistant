@@ -18,24 +18,30 @@
 
 Install goimport tools pour réparer les imports manquant
 
-> go install golang.org/x/tools/cmd/goimports@latest
+```shell
+go install golang.org/x/tools/cmd/goimports@latest
+```
 
 Install staticCheck pour détecter les fonctions non utilisées dans le code généré.
 
-> go install honnef.co/go/tools/cmd/staticcheck@latest
+```shell
+go install honnef.co/go/tools/cmd/staticcheck@latest
+```
 
 ## Installation
 
-1. Clone the repository :
+### 1. Clone the repository
+
+Start by cloning this repository and navigating to the project folder:
 
 ```shell
 git clone https://github.com/ariden83/openai-go-assistant.git
 cd openai-go-assistant
 ```
 
-2. Configure your OpenAI API keys:
+### 2. Configure your OpenAI API keys:
 
-Create an **.env** file in the root folder and add your OpenAI API key:
+Add your OpenAI API keys and configure settings in an .env file located in the project root:
 
 ```env
 OPENAI_API_KEY=your_openai_api_key
@@ -43,19 +49,54 @@ FILE_PATH=./test
 LANGAGE=fr
 ```
 
-## Use
+### 3. Install the dependencies
 
-Once installed and configured, you can run commands to use the different features of the wizard.
+#### a) Necessary tools
 
+**Goimports**: Automatically repairs missing imports in code.
+
+```shell
+go install golang.org/x/tools/cmd/goimports@latest
 ```
+
+**Staticcheck**: Detects unused functions and other problems in the code.
+
+```shell
+go install honnef.co/go/tools/cmd/staticcheck@latest
+```
+
+### 4. Use
+
+You have two options to run the project: install the utility or launch the project directly from the command line.
+
+#### **Option 1**: Install the utility
+
+Build and install the binary using the following command:
+
+```shell
+make install
+```
+
+Once installed, you will be able to run the wizard via specific commands to take advantage of its different features.
+
+```shell
+openai-go-assistant
+```
+
+####  **Option 2**: Launch the project directly
+
+If you prefer to run the project without installing the utility, simply run:
+
+```shell
 go run ./...
 ```
 
 ## OpenAI usage cost
 
+You can then track API usage costs in real time on the OpenAI platform [OpenAI usage cost](https://platform.openai.com/settings/organization/usage).
+
 ![OpenAI usage cost](doc/openai-usage-cost.png)
 
-- [OpenAI usage cost](https://platform.openai.com/settings/organization/usage)
 
 ## Resources
 
