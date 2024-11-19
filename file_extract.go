@@ -257,3 +257,68 @@ func (j *job) readFileContent() (string, error) {
 	// Retourner le contenu sous forme de chaîne
 	return string(data), nil
 }
+
+func extractFunctionDetails(funcDecl *ast.FuncDecl) string {
+	var builder strings.Builder
+	builder.WriteString("func ")
+
+	// Ajouter le nom de la struct si c'est une méthode
+	if funcDecl.Recv != nil {
+		for _, recv := range funcDecl.Recv.List {
+			// Type du receveur (struct)
+			builder.WriteString(fmt.Sprintf("(%s) ", exprToString(recv.Type)))
+		}
+	}
+
+	// Ajouter le nom de la fonction
+	builder.WriteString(funcDecl.Name.Name)
+
+	// Ajouter les paramètres
+	builder.WriteString("(")
+	if funcDecl.Type.Params != nil {
+		params := []string{}
+		for _, param := range funcDecl.Type.Params.List {
+			paramType := exprToString(param.Type)
+			for range param.Names {
+				params = append(params, paramType)
+			}
+			// Si aucun nom, on ajoute juste le type
+			if len(param.Names) == 0 {
+				params = append(params, paramType)
+			}
+		}
+		builder.WriteString(strings.Join(params, ", "))
+	}
+	builder.WriteString(")")
+
+	// Ajouter les résultats
+	if funcDecl.Type.Results != nil {
+		results := []string{}
+		for _, result := range funcDecl.Type.Results.List {
+			results = append(results, exprToString(result.Type))
+		}
+		builder.WriteString("(")
+		builder.WriteString(strings.Join(results, ", "))
+		builder.WriteString(") { ... }")
+	}
+
+	return builder.String()
+}
+
+// Fonction utilitaire pour convertir une expression en chaîne
+func exprToString(expr ast.Expr) string {
+	switch t := expr.(type) {
+	case *ast.Ident:
+		return t.Name
+	case *ast.SelectorExpr:
+		return fmt.Sprintf("%s.%s", exprToString(t.X), t.Sel.Name)
+	case *ast.StarExpr:
+		return fmt.Sprintf("*%s", exprToString(t.X))
+	case *ast.ArrayType:
+		return fmt.Sprintf("[]%s", exprToString(t.Elt))
+	case *ast.FuncType:
+		return "func" // Simplifié ici
+	default:
+		return fmt.Sprintf("%T", t)
+	}
+}

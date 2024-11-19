@@ -271,7 +271,7 @@ func (j *job) replaceCompleteFunctionsInFile(openAIResponse string) error {
 		return fmt.Errorf("erreur lors de l'extraction des fonctions: %v", err)
 	}
 
-	// Pour chaque déclaration dans le fichier, traiter les fonctions
+	// Pour chaque déclaration dans le fichier, traiter les fonctions.
 	for _, openAIFunc := range funcs {
 		found := false // Indique si la fonction OpenAI a été trouvée dans les déclarations existantes
 
@@ -280,6 +280,8 @@ func (j *job) replaceCompleteFunctionsInFile(openAIResponse string) error {
 			if ok {
 				// Si la fonction est complète, vérifier si elle correspond à celle d'OpenAI
 				if isCompleteFunction(funcDecl) && funcDecl.Name.Name == openAIFunc.Name.Name {
+					fullFuncName := extractFunctionDetails(funcDecl)
+					j.listFunctionsUpdated = append(j.listFunctionsUpdated, fullFuncName)
 					// Remplacer le corps de la fonction existante par celui d'OpenAI
 					funcDecl.Body = openAIFunc.Body
 					found = true
@@ -290,11 +292,14 @@ func (j *job) replaceCompleteFunctionsInFile(openAIResponse string) error {
 
 		// Si la fonction n'a pas été trouvée dans les déclarations existantes, l'ajouter
 		if !found {
+			fullFuncName := extractFunctionDetails(openAIFunc)
+			// Ajouter la fonction OpenAI à la liste des fonctions mises à jour.
+			j.listFunctionsCreated = append(j.listFunctionsCreated, fullFuncName)
 			node.Decls = append(node.Decls, openAIFunc)
 		}
 	}
 
-	// Ajouter toutes les déclarations modifiées au fichier modifié
+	// Ajouter toutes les déclarations modifiées au fichier modifié.
 	for _, decl := range node.Decls {
 		if err = printer.Fprint(&modifiedFile, fs, decl); err != nil {
 			return fmt.Errorf("erreur lors de l'écriture de la déclaration modifiée: %v", err)

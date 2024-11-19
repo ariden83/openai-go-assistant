@@ -15,3 +15,17 @@ func min(a, b int) int {
 	}
 	return b
 }
+
+func removeDuplicates(strings []string) []string {
+	unique := make(map[string]struct{})
+	result := []string{}
+
+	for _, str := range strings {
+		if _, exists := unique[str]; !exists {
+			unique[str] = struct{}{}
+			result = append(result, str)
+		}
+	}
+
+	return result
+}

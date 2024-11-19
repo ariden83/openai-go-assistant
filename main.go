@@ -16,19 +16,21 @@ import (
 )
 
 type job struct {
-	apiKey             secret.String
-	maxAttempts        int
-	fileDir            string
-	fileName           string
-	fileWithVendor     bool
-	currentFileName    string
-	currentStep        step
-	lang               string
-	mockOpenAIResponse bool
-	openAIModel        string
-	openAIURL          string
-	openAITemperature  float64
-	trad               Translations
+	apiKey               secret.String
+	maxAttempts          int
+	fileDir              string
+	fileName             string
+	fileWithVendor       bool
+	currentFileName      string
+	currentStep          step
+	lang                 string
+	listFunctionsCreated []string
+	listFunctionsUpdated []string
+	mockOpenAIResponse   bool
+	openAIModel          string
+	openAIURL            string
+	openAITemperature    float64
+	trad                 Translations
 }
 
 func main() {
@@ -54,17 +56,19 @@ func main() {
 	}
 
 	j := job{
-		apiKey:             secret.String(os.Getenv("OPENAI_API_KEY")),
-		maxAttempts:        4,
-		fileDir:            fileDir,
-		fileName:           "main.go",
-		currentStep:        stepVerifyPrompt,
-		currentFileName:    "main.go",
-		lang:               lang,
-		mockOpenAIResponse: true,
-		openAIModel:        model,
-		openAIURL:          "https://api.openai.com/v1/chat/completions",
-		openAITemperature:  0.2,
+		apiKey:               secret.String(os.Getenv("OPENAI_API_KEY")),
+		maxAttempts:          4,
+		fileDir:              fileDir,
+		fileName:             "main.go",
+		currentStep:          stepVerifyPrompt,
+		currentFileName:      "main.go",
+		lang:                 lang,
+		listFunctionsUpdated: []string{},
+		listFunctionsCreated: []string{},
+		mockOpenAIResponse:   true,
+		openAIModel:          model,
+		openAIURL:            "https://api.openai.com/v1/chat/completions",
+		openAITemperature:    0.2,
 	}
 
 	if err := j.loadTranslations(); err != nil {
@@ -129,6 +133,19 @@ func (j *job) run() {
 			if fileContent, err := j.readFileContent(); err == nil && len(fileContent) > 50 {
 				prompt += ".\n\n" + j.t("Here is the Golang code") + " :\n\n" + fileContent
 			}
+
+		} else if j.currentStep == stepAddTest {
+			fileContent, err := j.readFileContent()
+			if err != nil {
+				fmt.Println(j.t("Error retrieving the name of the contents of the current file"), err)
+				return
+			}
+
+			prompt = j.t("I have some Golang code") + ":"
+			prompt += "\n\n" + fileContent
+			prompt += "\n\n" + j.t("I would like to enrich these functions with unit tests") + ":"
+			prompt += "\n\n" + j.printTestsFuncName()
+			prompt += "\n\n" + j.t("Can you generate the tests for the nominal cases as well as the error cases, without comment or explanation? My goal is to ensure comprehensive coverage, particularly for:\n\nExpected success scenarios (nominal cases)\nError handling scenarios\nPlease structure the tests to be easily readable, using t.Run to name each test case.")
 
 		} else {
 			prompt = j.t(stepEntry.Prompt)
@@ -247,7 +264,22 @@ func (j *job) run() {
 		}
 	}
 	fmt.Println(j.t("End of the job") + "\n\n" + j.t("Restarting the job ?"))
+	j.reinitJob()
 	j.run()
+}
+
+func (j *job) reinitJob() {
+	j.listFunctionsUpdated = []string{}
+	j.listFunctionsCreated = []string{}
+}
+
+func (j *job) printTestsFuncName() string {
+	var funcs string
+	j.listFunctionsCreated = removeDuplicates(j.listFunctionsCreated)
+	for _, name := range j.listFunctionsCreated {
+		funcs += name + "\n\n"
+	}
+	return funcs
 }
 
 func (j *job) stepStart(code string) error {
