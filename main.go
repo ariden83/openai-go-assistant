@@ -68,7 +68,7 @@ func main() {
 		mockOpenAIResponse:   false,
 		openAIModel:          model,
 		openAIURL:            "https://api.openai.com/v1/chat/completions",
-		openAITemperature:    0.2,
+		openAITemperature:    0.6,
 	}
 
 	if err := j.loadTranslations(); err != nil {

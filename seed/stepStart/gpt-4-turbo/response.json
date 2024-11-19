@@ -1,0 +1,34 @@
+{
+  "id": "chatcmpl-AVIpNIu5l55IAuH4C0o2V0Oie8bQX",
+  "object": "chat.completion",
+  "created": 1732023905,
+  "model": "gpt-4-turbo-2024-04-09",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "```go\npackage main\n\nimport (\n\t\"bytes\"\n\t\"fmt\"\n\t\"net/http\"\n\t\"os/exec\"\n\t\"time\"\n)\n\nfunc executeCodeHandler(w http.ResponseWriter, r *http.Request) {\n\tif r.Method != \"POST\" {\n\t\thttp.Error(w, \"Invalid request method.\", http.StatusMethodNotAllowed)\n\t\treturn\n\t}\n\n\tcodeFile := r.FormValue(\"codeFile\")\n\tif codeFile == \"\" {\n\t\thttp.Error(w, \"Missing code file parameter.\", http.StatusBadRequest)\n\t\treturn\n\t}\n\n\tstart := time.Now()\n\tcmd := exec.Command(\"go\", \"run\", codeFile)\n\tvar out bytes.Buffer\n\tcmd.Stdout = &out\n\terr := cmd.Run()\n\tduration := time.Since(start)\n\n\tif err != nil {\n\t\thttp.Error(w, err.Error(), http.StatusInternalServerError)\n\t\treturn\n\t}\n\n\tresult := fmt.Sprintf(\"Output: %s\\nExecution Time: %v\", out.String(), duration)\n\tw.Write([]byte(result))\n}\n\nfunc main() {\n\thttp.HandleFunc(\"/execute\", executeCodeHandler)\n\thttp.ListenAndServe(\":8080\", nil)\n}\n```",
+        "refusal": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 113,
+    "completion_tokens": 216,
+    "total_tokens": 329,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "audio_tokens": 0
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 0,
+      "audio_tokens": 0,
+      "accepted_prediction_tokens": 0,
+      "rejected_prediction_tokens": 0
+    }
+  },
+  "system_fingerprint": "fp_35090ec11f"
+}
