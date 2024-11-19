@@ -64,10 +64,10 @@ func (j *job) generateGolangCode(prompt string) (string, error) {
 		return "", fmt.Errorf("%s: %s", response.Error.Code, response.Error.Message)
 	}
 
-	// fmt.Println(fmt.Sprintf("openAI response : %+v", response))
 	if len(response.Choices) > 0 {
 		// fmt.Println(fmt.Sprintf("openAI response details : %+v", response.Choices[0].Message.Content))
-		return response.Choices[0].Message.Content, nil
+		code := j.extractBackticks(response.Choices[0].Message.Content)
+		return strings.TrimSpace(code), nil
 	}
 
 	return "", fmt.Errorf(j.t("could not parse API response"))

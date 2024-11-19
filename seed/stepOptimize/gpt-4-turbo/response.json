@@ -1,0 +1,34 @@
+{
+  "id": "chatcmpl-AVPEHCnka9SGS3aS1itU5cZYohZMP",
+  "object": "chat.completion",
+  "created": 1732048513,
+  "model": "gpt-4-turbo-2024-04-09",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "```go\npackage chatgpt\n\nimport (\n\t\"bytes\"\n\t\"io/ioutil\"\n\t\"net/http\"\n\t\"net/http/httptest\"\n\t\"os\"\n\t\"testing\"\n)\n\nfunc TestExecuteCodeHandler(t *testing.T) {\n\tt.Run(\"POST method success\", func(t *testing.T) {\n\t\t// Setup a file for the code to execute\n\t\tcode := []byte(`package main\nimport \"fmt\"\nfunc main() {\n\tfmt.Println(\"Hello, world!\")\n}`)\n\t\terr := ioutil.WriteFile(\"./code_to_execute.go\", code, 0644)\n\t\tif err != nil {\n\t\t\tt.Fatal(err)\n\t\t}\n\t\tdefer os.Remove(\"./code_to_execute.go\")\n\n\t\t// Create a request\n\t\treq, err := http.NewRequest(http.MethodPost, \"/execute\", nil)\n\t\tif err != nil {\n\t\t\tt.Fatal(err)\n\t\t}\n\n\t\t// Record responses\n\t\trr := httptest.NewRecorder()\n\t\thandler := http.HandlerFunc(executeCodeHandler)\n\n\t\thandler.ServeHTTP(rr, req)\n\n\t\t// Check the status code\n\t\tif status := rr.Code; status != http.StatusOK {\n\t\t\tt.Errorf(\"handler returned wrong status code: got %v want %v\",\n\t\t\t\tstatus, http.StatusOK)\n\t\t}\n\n\t\t// Check the output\n\t\texpected := \"Hello, world!\\n\"\n\t\tif !bytes.Contains(rr.Body.Bytes(), []byte(expected)) {\n\t\t\tt.Errorf(\"handler returned unexpected body: got %v want %v\",\n\t\t\t\trr.Body.String(), expected)\n\t\t}\n\t})\n\n\tt.Run(\"Wrong HTTP method\", func(t *testing.T) {\n\t\treq, err := http.NewRequest(http.MethodGet, \"/execute\", nil)\n\t\tif err != nil {\n\t\t\tt.Fatal(err)\n\t\t}\n\n\t\trr := httptest.NewRecorder()\n\t\thandler := http.HandlerFunc(executeCodeHandler)\n\n\t\thandler.ServeHTTP(rr, req)\n\n\t\tif status := rr.Code; status != http.StatusMethodNotAllowed {\n\t\t\tt.Errorf(\"handler returned wrong status code: got %v want %v\",\n\t\t\t\tstatus, http.StatusMethodNotAllowed)\n\t\t}\n\t})\n\n\tt.Run(\"Execution failure\", func(t *testing.T) {\n\t\t// Create a request\n\t\treq, err := http.NewRequest(http.MethodPost, \"/execute\", nil)\n\t\tif err != nil {\n\t\t\tt.Fatal(err)\n\t\t}\n\n\t\t// Record responses\n\t\trr := httptest.NewRecorder()\n\t\thandler := http.HandlerFunc(executeCodeHandler)\n\n\t\thandler.ServeHTTP(rr, req)\n\n\t\t// Check the status code\n\t\tif status := rr.Code; status != http.StatusInternalServerError {\n\t\t\tt.Errorf(\"handler returned wrong status code: got %v want %v\",\n\t\t\t\tstatus, http.StatusInternalServerError)\n\t\t}\n\t})\n}\n\nfunc TestMainFunction(t *testing.T) {\n\tif os.Getenv(\"BE_CRASHER\") == \"1\" {\n\t\tmain()\n\t\treturn\n\t}\n\n\tcmd := exec.Command(os.Args[0], \"-test.run=TestMainFunction\")\n\tcmd.Env = append(os.Environ(), \"BE_CRASHER=1\")\n\terr := cmd.Start()\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\terr = cmd.Wait()\n\n\te, ok := err.(*exec.ExitError)\n\tif !ok {\n\t\tt.Fatalf(\"process ran with err %v, want exit status 1\", err)\n\t}\n\n\tif !e.Success() {\n\t\tt.Fatalf(\"process ran with err %v, want exit status 1\", e)\n\t}\n}\n```",
+        "refusal": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 338,
+    "completion_tokens": 713,
+    "total_tokens": 1051,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "audio_tokens": 0
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 0,
+      "audio_tokens": 0,
+      "accepted_prediction_tokens": 0,
+      "rejected_prediction_tokens": 0
+    }
+  },
+  "system_fingerprint": "fp_d5d846896e"
+}

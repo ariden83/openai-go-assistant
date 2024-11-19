@@ -113,6 +113,7 @@ func (j *job) run() {
 		j.currentFileName = j.fileName
 
 		if j.currentStep == stepVerifyPrompt {
+			continue
 			verifPrompt := fmt.Sprintf(j.t("Responds with true or false in JSON. Is the following question a request for Go code")+" : \"%s\" ?", prompt)
 			fmt.Println(fmt.Sprintf("\nprompt: "+blue("%s")+"\n\n", verifPrompt))
 
@@ -185,6 +186,9 @@ func (j *job) run() {
 					return
 				}
 			}
+
+			// todo remove
+			code = strings.TrimSpace(code)
 
 			if err = j.stepFixCode(code); err != nil {
 				fmt.Println(j.t("Error updating file"), err)

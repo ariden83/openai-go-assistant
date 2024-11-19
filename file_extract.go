@@ -13,7 +13,21 @@ import (
 	"strings"
 )
 
-// Fonction pour extraire toutes les fonctions dans un code donné
+func (j *job) extractBackticks(code string) string {
+	// Si la chaîne commence et se termine par des backticks, on les supprime.
+	if strings.HasPrefix(code, "```go") && strings.HasSuffix(code, "```") {
+		// Supprimer les backticks au début et à la fin
+		return code[5 : len(code)-3]
+	}
+	if strings.HasPrefix(code, "```") && strings.HasSuffix(code, "```") {
+		// Supprimer les backticks au début et à la fin
+		return code[3 : len(code)-3]
+	}
+	// Sinon, retourner la chaîne telle quelle
+	return code
+}
+
+// extractFunctionsFromCode extrait les déclarations de fonction d'un code Go sous forme de chaîne.
 func (j *job) extractFunctionsFromCode(code string) ([]*ast.FuncDecl, error) {
 
 	if !strings.HasPrefix(code, "package") {
@@ -37,6 +51,7 @@ func (j *job) extractFunctionsFromCode(code string) ([]*ast.FuncDecl, error) {
 	return funcs, nil
 }
 
+// extractStructsFromCode extrait les déclarations de struct d'un code Go sous forme de chaîne.
 func (j *job) extractStructsFromCode(code string) ([]*ast.TypeSpec, error) {
 
 	if !strings.HasPrefix(code, "package") {
@@ -67,6 +82,7 @@ func (j *job) extractStructsFromCode(code string) ([]*ast.TypeSpec, error) {
 	return structs, nil
 }
 
+// extractInterfacesFromCode extrait les déclarations d'interface d'un code Go sous forme de chaîne.
 func (j *job) extractInterfacesFromCode(code string) ([]*ast.TypeSpec, error) {
 
 	if !strings.HasPrefix(code, "package") {
@@ -97,6 +113,7 @@ func (j *job) extractInterfacesFromCode(code string) ([]*ast.TypeSpec, error) {
 	return interfaces, nil
 }
 
+// extractConstsFromCode extrait les déclarations de const d'un code Go sous forme de chaîne.
 func (j *job) extractConstsFromCode(code string) ([]*ast.GenDecl, error) {
 
 	if !strings.HasPrefix(code, "package") {
@@ -120,6 +137,7 @@ func (j *job) extractConstsFromCode(code string) ([]*ast.GenDecl, error) {
 	return consts, nil
 }
 
+// extractVarsFromCode extrait les déclarations de var d'un code Go sous forme de chaîne.
 func (j *job) extractVarsFromCode(code string) ([]*ast.GenDecl, error) {
 	if !strings.HasPrefix(code, "package") {
 		// Ajouter "package main" au début du code
@@ -142,7 +160,7 @@ func (j *job) extractVarsFromCode(code string) ([]*ast.GenDecl, error) {
 	return vars, nil
 }
 
-// Fonction pour extraire les imports d'un code Go sous forme de chaîne
+// extractImportsFromCode extrait les déclarations d'import d'un code Go sous forme de chaîne.
 func extractImportsFromCode(code string) ([]string, error) {
 
 	if !strings.HasPrefix(code, "package") {
@@ -150,6 +168,7 @@ func extractImportsFromCode(code string) ([]string, error) {
 		code = "package main\n\nimport \"fmt\"\n\n" + code
 	}
 
+	fmt.Println("code", code, "end")
 	// Parser le fichier Go pour en extraire l'AST
 	fs := token.NewFileSet()
 	node, err := parser.ParseFile(fs, "", []byte(code), parser.ImportsOnly)
@@ -164,6 +183,7 @@ func extractImportsFromCode(code string) ([]string, error) {
 	return imports, nil
 }
 
+// extractLineNumber extrait le numéro de ligne d'un message d'erreur.
 func extractLineNumber(errorMessage string) (int, error) {
 	// Expression régulière pour capturer le numéro de ligne
 	re := regexp.MustCompile(`:(\d+):\d+`)
@@ -183,6 +203,7 @@ func extractLineNumber(errorMessage string) (int, error) {
 	return lineNumber, nil
 }
 
+// extractFunctionFromLine extrait le code d'une fonction à partir du numéro de ligne.
 func (j *job) extractFunctionFromLine(lineNumber int) (string, error) {
 	// Lire le fichier Go
 	data, err := ioutil.ReadFile(j.fileDir + "/" + j.currentFileName)
@@ -234,6 +255,7 @@ func (j *job) extractFunctionFromLine(lineNumber int) (string, error) {
 	return surroundingCode.String(), nil
 }
 
+// extractErrorForPrompt extrait le code de la fonction contenant l'erreur pour afficher dans le prompt.
 func (j *job) extractErrorForPrompt(output string) (string, error) {
 	errorLine, err := extractLineNumber(output)
 	if err != nil {
@@ -258,6 +280,7 @@ func (j *job) readFileContent() (string, error) {
 	return string(data), nil
 }
 
+// extractFunctionDetails extrait les détails d'une fonction à partir de sa déclaration.
 func extractFunctionDetails(funcDecl *ast.FuncDecl) string {
 	var builder strings.Builder
 	builder.WriteString("func ")
@@ -305,7 +328,7 @@ func extractFunctionDetails(funcDecl *ast.FuncDecl) string {
 	return builder.String()
 }
 
-// Fonction utilitaire pour convertir une expression en chaîne
+// exprToString Fonction utilitaire pour convertir une expression en chaîne
 func exprToString(expr ast.Expr) string {
 	switch t := expr.(type) {
 	case *ast.Ident:
