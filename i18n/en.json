@@ -54,7 +54,7 @@
   "error parsing code": "error parsing code",
   "error running goimports": "error running goimports",
   "Analysis of": "Analysis of",
-  "Responds with true or false in JSON. Is the following question a request for Go code": "Responds with true or false in JSON. Is the following question a request for GOLANG code",
+  "Responds with true or false in JSON. Is the following question a request for Go code": "Responds with true or false. Is the following question a request for GOLANG code",
   "The question is not a request for Go code": "The question is not a request for GOLANG code",
   "Write code in Go to solve the following problem": "Write code in GOLANG to solve the following problem",
   "Error checking prompt": "Error checking prompt"

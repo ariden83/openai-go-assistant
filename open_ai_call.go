@@ -7,6 +7,8 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strings"
+
+	"moul.io/http2curl"
 )
 
 // Fonction pour envoyer une requête à l'API OpenAI
@@ -34,6 +36,10 @@ func (j *job) generateGolangCode(prompt string) (string, error) {
 	req.Header.Set("Authorization", "Bearer "+string(j.apiKey))
 
 	client := &http.Client{}
+
+	command, _ := http2curl.GetCurlCommand(req)
+	fmt.Println(command)
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
@@ -58,7 +64,9 @@ func (j *job) generateGolangCode(prompt string) (string, error) {
 		return "", fmt.Errorf("%s: %s", response.Error.Code, response.Error.Message)
 	}
 
+	// fmt.Println(fmt.Sprintf("openAI response : %+v", response))
 	if len(response.Choices) > 0 {
+		// fmt.Println(fmt.Sprintf("openAI response details : %+v", response.Choices[0].Message.Content))
 		return response.Choices[0].Message.Content, nil
 	}
 
@@ -67,5 +75,5 @@ func (j *job) generateGolangCode(prompt string) (string, error) {
 
 func (j *job) responseToBool(messContent string) bool {
 	responseText := strings.TrimSpace(messContent)
-	return responseText == "true"
+	return strings.ToLower(responseText) == "true"
 }

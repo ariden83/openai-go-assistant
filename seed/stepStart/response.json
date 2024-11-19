@@ -1,0 +1,34 @@
+{
+  "id": "chatcmpl-AVGMs7rc9Lfwu7CVaJbMyFhCDM37b",
+  "object": "chat.completion",
+  "created": 1732014450,
+  "model": "gpt-3.5-turbo-0125",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "package main\n\nimport (\n\t\"fmt\"\n\t\"time\"\n)\n\nfunc main() {\n\thandler(\"fmt.Println(\\\"Hello, World!\\\")\")\n}\n\nfunc handler(prompt string) {\n\tstart := time.Now()\n\n\t// Execute the code associated with the prompt\n\teval(prompt)\n\n\t// Estimate and return the cost of execution\n\tduration := time.Since(start)\n\tfmt.Printf(\"Cost of execution: %v\\n\", duration)\n}\n\nfunc eval(code string) {\n\t// Execute the code\n\tevaluatedCode, err := eval(code)\n\tif err != nil {\n\t\tfmt.Println(\"Error evaluating code:\", err)\n\t\treturn\n\t}\n\n\t// Print the evaluated code\n\tfmt.Println(\"Evaluated code:\", evaluatedCode)\n}\n\nfunc eval(code string) (string, error) {\n\t// In a real implementation, this function would evaluate the code and return the result\n\treturn code, nil\n}",
+        "refusal": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 81,
+    "completion_tokens": 176,
+    "total_tokens": 257,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "audio_tokens": 0
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 0,
+      "audio_tokens": 0,
+      "accepted_prediction_tokens": 0,
+      "rejected_prediction_tokens": 0
+    }
+  },
+  "system_fingerprint": null
+}

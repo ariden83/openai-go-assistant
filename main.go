@@ -65,7 +65,7 @@ func main() {
 		lang:                 lang,
 		listFunctionsUpdated: []string{},
 		listFunctionsCreated: []string{},
-		mockOpenAIResponse:   true,
+		mockOpenAIResponse:   false,
 		openAIModel:          model,
 		openAIURL:            "https://api.openai.com/v1/chat/completions",
 		openAITemperature:    0.2,
@@ -78,6 +78,9 @@ func main() {
 	j.run()
 }
 
+/*
+je voudrais avoir un handler qui reçoit un prompt et qui execute le code golang associé dans un fichier local et je voudrais pouvoir estimer et retourner le cout d'execution du code en question
+*/
 func (j *job) run() {
 
 	filesFound, err := j.loadFilesFromFolder()

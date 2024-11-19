@@ -54,7 +54,7 @@
   "error parsing code": "erreur d'analyse du code",
   "error running goimports": "erreur lors de l'exécution de goimports",
   "Analysis of": "Analyse de",
-    "Responds with true or false in JSON. Is the following question a request for Go code": "Répond avec vrai ou faux en JSON. La question suivante est-elle une demande de code GOLANG",
+    "Responds with true or false in JSON. Is the following question a request for Go code": "Répond avec true ou false. La question suivante est-elle une demande de code GOLANG",
   "The question is not a request for Go code": "La question n'est pas une demande de code GOLANG",
   "Write code in Go to solve the following problem": "Écrivez du code en GOLANG pour résoudre le problème suivant",
   "Error checking prompt": "Erreur lors de la vérification du prompt"
