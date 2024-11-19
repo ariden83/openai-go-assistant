@@ -9,8 +9,15 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/fatih/color"
 	"github.com/manifoldco/promptui"
 )
+
+var blue func(a ...interface{}) string
+
+func init() {
+	blue = color.New(color.FgBlue).SprintFunc()
+}
 
 func (j *job) prepareGoPrompt(userPrompt string) string {
 	// Ajouter le contexte pour spécifier que la question porte sur du code Go

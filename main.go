@@ -110,10 +110,8 @@ func (j *job) run() {
 		j.currentFileName = j.fileName
 
 		if j.currentStep == stepVerifyPrompt {
-
 			verifPrompt := fmt.Sprintf(j.t("Responds with true or false in JSON. Is the following question a request for Go code")+" : \"%s\" ?", prompt)
-			fmt.Println(fmt.Sprintf("***************************************(start)\nprompt: %s\n\n"+
-				"*************************************** (end)", verifPrompt))
+			fmt.Println(fmt.Sprintf("\nprompt: "+blue("%s")+"\n\n", verifPrompt))
 
 			respContent, err := j.generateGolangCode(verifPrompt)
 			if err != nil {
@@ -169,8 +167,7 @@ func (j *job) run() {
 
 		for attempt := 1; attempt <= j.maxAttempts; attempt++ {
 
-			fmt.Println(fmt.Sprintf("***************************************(start)\nprompt: %s\n\n"+
-				"*************************************** (end)", prompt))
+			fmt.Println(fmt.Sprintf("\nprompt: "+blue("%s")+"\n\n", prompt))
 
 			code, err := j.generateGolangCode(prompt)
 			if err != nil {
