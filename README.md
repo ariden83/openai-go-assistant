@@ -62,6 +62,7 @@ go run ./...
 - [Models OpenAI API](https://platform.openai.com/docs/models)
 - [OpenAI API](https://platform.openai.com/docs/api-reference)
 - [OpenAI usage cost](https://platform.openai.com/settings/organization/usage)
+- [OpenAI playground - test models](https://platform.openai.com/playground/chat?models=gpt-4o)
 
 ## Contribution
 
