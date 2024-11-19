@@ -51,9 +51,17 @@ Once installed and configured, you can run commands to use the different feature
 go run ./...
 ```
 
+## OpenAI usage cost
+
+![OpenAI usage cost](doc/openai-usage-cost.png)
+
+- [OpenAI usage cost](https://platform.openai.com/settings/organization/usage)
+
 ## Resources
 
 - [Models OpenAI API](https://platform.openai.com/docs/models)
+- [OpenAI API](https://platform.openai.com/docs/api-reference)
+- [OpenAI usage cost](https://platform.openai.com/settings/organization/usage)
 
 ## Contribution
 
