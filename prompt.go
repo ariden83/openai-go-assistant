@@ -90,14 +90,14 @@ func (j *job) promptSelectExistentFile(filesFound []string) error {
 func (j *job) promptNoFilesFoundCreateANewFile() error {
 	// Prompt de confirmation pour générer un fichier
 	confirmPrompt := promptui.Prompt{
-		Label:     "No files found, create one",
+		Label:     j.t("No files found, create one"),
 		IsConfirm: true,
 	}
 
 	// Lire la réponse de confirmation
 	_, err := confirmPrompt.Run()
 	if err != nil {
-		fmt.Println("File generation canceled.")
+		fmt.Println(j.t("File generation canceled"))
 		return errors.New("end")
 	}
 	return j.promptCreateANewFile()

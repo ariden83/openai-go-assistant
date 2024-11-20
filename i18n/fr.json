@@ -1,6 +1,8 @@
 {
   "": "",
-  "No files found in the specified folder, a main.go file will be created": "Aucun fichier trouvé dans le dossier spécifié, un fichier main.go sera créé",
+  "No files found, create one": "Aucun fichier trouvé, en créer un",
+  "File generation canceled": "Génération de fichier annulée",
+  "No files found in the specified folder, create a new one": "Aucun fichier trouvé dans le dossier spécifié, en créer un",
   "Error configuring Go modules": "Erreur lors de la configuration des modules Go",
   "Reply without comment or explanation": "Répondre sans commentaire ni explication",
   "Here is the Golang code": "Voici le code Golang",

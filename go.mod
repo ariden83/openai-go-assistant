@@ -1,11 +1,11 @@
-module github.com/ariden/openai-go-assistant
+module github.com/ariden/goia
 
 go 1.22.5
 
 require (
 	github.com/fatih/color v1.18.0
-	github.com/joho/godotenv v1.5.1
 	github.com/manifoldco/promptui v0.9.0
+	gopkg.in/yaml.v3 v3.0.1
 	moul.io/http2curl v1.0.0
 )
 

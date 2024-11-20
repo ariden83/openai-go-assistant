@@ -11,8 +11,8 @@ import (
 	"moul.io/http2curl"
 )
 
-// Fonction pour envoyer une requête à l'API OpenAI
-func (j *job) generateGolangCode(prompt string) (string, error) {
+// callIA calls the OpenAI API with the given prompt and returns the response.
+func (j *job) callIA(prompt string) (string, error) {
 
 	requestBody := map[string]interface{}{
 		"model": j.openAIModel,
@@ -33,7 +33,7 @@ func (j *job) generateGolangCode(prompt string) (string, error) {
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+string(j.apiKey))
+	req.Header.Set("Authorization", "Bearer "+string(j.openAIApiKey))
 
 	client := &http.Client{}
 

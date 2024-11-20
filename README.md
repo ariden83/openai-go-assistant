@@ -44,9 +44,13 @@ cd openai-go-assistant
 Add your OpenAI API keys and configure settings in an .env file located in the project root:
 
 ```env
-OPENAI_API_KEY=your_openai_api_key
-FILE_PATH=./test
-LANGAGE=fr
+language: "fr"
+openai_model: "gpt-4-turbo"
+openai_api_key: "your-api-key"
+openai_url: "https://api.openai.com/v1/chat/completions"
+openai_temperature: 0.6
+openai_max_tokens: 256
+max_attempts: 3
 ```
 
 ### 3. Install the dependencies
@@ -79,10 +83,6 @@ make install
 
 Once installed, you will be able to run the wizard via specific commands to take advantage of its different features.
 
-```shell
-openai-go-assistant
-```
-
 ####  **Option 2**: Launch the project directly
 
 If you prefer to run the project without installing the utility, simply run:
@@ -90,6 +90,26 @@ If you prefer to run the project without installing the utility, simply run:
 ```shell
 go run ./...
 ```
+
+## Usage
+
+```text
+Usage: goia [flags] [path ...]
+  -d	display diffs instead of rewriting files
+  -l	list files whose formatting differs from goimport's
+  -local string
+    	put imports beginning with this string after 3rd-party package
+  -prefix value
+    	relative local prefix to from a new import group (can be given several times)
+  -w	write result to (source) file instead of stdout
+```
+
+**Example :**
+
+```shell
+goia -l -w ./test/.
+```
+
 
 ## OpenAI usage cost
 

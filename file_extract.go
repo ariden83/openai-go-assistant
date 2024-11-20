@@ -270,14 +270,17 @@ func (j *job) extractErrorForPrompt(output string) (string, error) {
 }
 
 // ReadFileContent lit le contenu d'un fichier et le retourne sous forme de chaîne de caractères.
-func (j *job) readFileContent() (string, error) {
+func (j *job) readFileContent() ([]byte, error) {
+	if j.source == fileSourceStdin {
+		return []byte{}, nil
+	}
 	// Lire tout le contenu du fichier
-	data, err := ioutil.ReadFile(j.fileDir + "/" + j.fileName)
+	data, err := ioutil.ReadFile(j.fileDir + "/" + j.currentFileName)
 	if err != nil {
-		return "", fmt.Errorf("erreur lors de la lecture du fichier %s: %v", j.fileDir+"/"+j.fileName, err)
+		return nil, fmt.Errorf("erreur lors de la lecture du fichier %s: %v", j.fileDir+"/"+j.currentFileName, err)
 	}
 	// Retourner le contenu sous forme de chaîne
-	return string(data), nil
+	return data, nil
 }
 
 // extractFunctionDetails extrait les détails d'une fonction à partir de sa déclaration.

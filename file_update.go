@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/format"
@@ -26,23 +27,28 @@ func addImport(existingImports []string, newImport string) []string {
 	return append(existingImports, newImport)
 }
 
-func (j *job) replaceCompleteFunctionsInFile(openAIResponse string) error {
+func (j *job) stepFixCode(openAIResponse string) ([]byte, error) {
 	// Extraire les imports proposés par OpenAI
 	openAIImports, err := extractImportsFromCode(openAIResponse)
 	if err != nil {
-		return fmt.Errorf("erreur lors de l'extraction des imports OpenAI: %v", err)
+		return nil, fmt.Errorf("erreur lors de l'extraction des imports OpenAI: %v", err)
 	}
 
+	var data []byte
 	// Lire le fichier Go existant
-	data, err := ioutil.ReadFile(j.fileDir + "/" + j.currentFileName)
-	if err != nil {
-		return fmt.Errorf("erreur lors de la lecture du fichier: %v", err)
+	if j.source == fileSourceStdin {
+		data = []byte{}
+	} else {
+		data, err = ioutil.ReadFile(j.fileDir + "/" + j.currentFileName)
+		if err != nil {
+			return nil, fmt.Errorf("erreur lors de la lecture du fichier: %v", err)
+		}
 	}
 
 	// Extraire les imports existants dans le fichier
 	existingImports, err := extractImportsFromCode(string(data))
 	if err != nil {
-		return fmt.Errorf("erreur lors de l'extraction des imports existants: %v", err)
+		return nil, fmt.Errorf("erreur lors de l'extraction des imports existants: %v", err)
 	}
 
 	// Ajouter les imports OpenAI manquants aux imports existants
@@ -54,7 +60,7 @@ func (j *job) replaceCompleteFunctionsInFile(openAIResponse string) error {
 	fs := token.NewFileSet()
 	node, err := parser.ParseFile(fs, j.fileDir+"/"+j.currentFileName, data, parser.ParseComments)
 	if err != nil {
-		return fmt.Errorf("erreur lors de l'analyse du fichier: %v", err)
+		return nil, fmt.Errorf("erreur lors de l'analyse du fichier: %v", err)
 	}
 
 	// Préparer un buffer pour le fichier modifié
@@ -92,7 +98,7 @@ func (j *job) replaceCompleteFunctionsInFile(openAIResponse string) error {
 
 	interfaces, err := j.extractInterfacesFromCode(openAIResponse)
 	if err != nil {
-		return fmt.Errorf("erreur lors de l'extraction des interfaces: %v", err)
+		return nil, fmt.Errorf("erreur lors de l'extraction des interfaces: %v", err)
 	}
 
 	for _, openAIInterface := range interfaces {
@@ -131,7 +137,7 @@ func (j *job) replaceCompleteFunctionsInFile(openAIResponse string) error {
 
 	constants, err := j.extractConstsFromCode(openAIResponse)
 	if err != nil {
-		return fmt.Errorf("erreur lors de l'extraction des constantes: %v", err)
+		return nil, fmt.Errorf("erreur lors de l'extraction des constantes: %v", err)
 	}
 
 	for _, genConst := range constants {
@@ -178,7 +184,7 @@ func (j *job) replaceCompleteFunctionsInFile(openAIResponse string) error {
 
 	vars, err := j.extractVarsFromCode(openAIResponse)
 	if err != nil {
-		return fmt.Errorf("erreur lors de l'extraction des variables: %v", err)
+		return nil, fmt.Errorf("erreur lors de l'extraction des variables: %v", err)
 	}
 
 	for _, genVar := range vars {
@@ -224,7 +230,7 @@ func (j *job) replaceCompleteFunctionsInFile(openAIResponse string) error {
 
 	structs, err := j.extractStructsFromCode(openAIResponse)
 	if err != nil {
-		return fmt.Errorf("erreur lors de l'extraction des structures: %v", err)
+		return nil, fmt.Errorf("erreur lors de l'extraction des structures: %v", err)
 	}
 
 	for _, openAIStruct := range structs {
@@ -268,7 +274,7 @@ func (j *job) replaceCompleteFunctionsInFile(openAIResponse string) error {
 
 	funcs, err := j.extractFunctionsFromCode(openAIResponse)
 	if err != nil {
-		return fmt.Errorf("erreur lors de l'extraction des fonctions: %v", err)
+		return nil, fmt.Errorf("erreur lors de l'extraction des fonctions: %v", err)
 	}
 
 	// Pour chaque déclaration dans le fichier, traiter les fonctions.
@@ -302,7 +308,7 @@ func (j *job) replaceCompleteFunctionsInFile(openAIResponse string) error {
 	// Ajouter toutes les déclarations modifiées au fichier modifié.
 	for _, decl := range node.Decls {
 		if err = printer.Fprint(&modifiedFile, fs, decl); err != nil {
-			return fmt.Errorf("erreur lors de l'écriture de la déclaration modifiée: %v", err)
+			return nil, fmt.Errorf("erreur lors de l'écriture de la déclaration modifiée: %v", err)
 		}
 		modifiedFile.WriteString("\n\n")
 	}
@@ -313,37 +319,78 @@ func (j *job) replaceCompleteFunctionsInFile(openAIResponse string) error {
 	// Appliquer un formatage Go standard au code généré
 	formattedCode, err := format.Source(modifiedFile.Bytes())
 	if err != nil {
-		return fmt.Errorf("erreur lors du formatage du fichier: %v", err)
+		return nil, fmt.Errorf("erreur lors du formatage du fichier: %v", err)
 	}
 
 	// Sauvegarder le fichier modifié
-	return ioutil.WriteFile(j.fileDir+"/"+j.currentFileName, formattedCode, 0644)
+	return formattedCode, nil
+	//return ioutil.WriteFile(j.fileDir+"/"+j.currentFileName, formattedCode, 0644)
 }
 
-// Fonction pour écrire le code dans un fichier .go
-func (j *job) writeCodeToFile(code string) error {
+func (j *job) writeFile(src, res []byte) error {
+	out := os.Stdout
+	if !bytes.Equal(src, res) {
+		if j.args.listOnly {
+			_, _ = fmt.Fprintln(out, j.fileDir+"/"+j.currentFileName)
+		}
+		if j.args.write {
+			if j.source == fileSourceStdin {
+				return errors.New("can't use -w on stdin")
+			}
+			return os.WriteFile(j.fileDir+"/"+j.currentFileName, res, 0o644)
+		}
+
+		if j.args.diffOnly {
+			if j.source == fileSourceStdin {
+				j.currentFileName = "stdin.go" // because <standard input>.orig looks silly
+			}
+
+			data, err := diff(src, res, j.fileDir+"/"+j.currentFileName)
+			if err != nil {
+				return fmt.Errorf("computing diff: %v", err)
+			}
+
+			_, _ = out.Write(data)
+		}
+	}
+
+	if !j.args.listOnly && !j.args.write && !j.args.diffOnly {
+		if _, err := out.Write(res); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// createNewFile crée un nouveau fichier de test, si il existe déjà, il le lit.
+func (j *job) createNewTestFile() ([]byte, error) {
 	// Construit le chemin complet du fichier
 	fullPath := filepath.Join(j.fileDir, j.currentFileName)
 
 	// Vérifie si le fichier existe déjà
 	if _, err := os.Stat(fullPath); err == nil {
 		fmt.Println("Le fichier existe déjà:", fullPath)
-		return nil
+
+		return j.readFileContent()
+
 	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("erreur lors de la vérification de l'existence du fichier: %v", err)
+		return nil, fmt.Errorf("erreur lors de la vérification de l'existence du fichier: %v", err)
 	}
 
 	// Crée un fichier vide
 	file, err := os.Create(fullPath)
 	if err != nil {
-		return fmt.Errorf("erreur lors de la création du fichier: %v", err)
+		return nil, fmt.Errorf("erreur lors de la création du fichier: %v", err)
 	}
 	defer file.Close()
 
 	fmt.Println("Fichier créé avec succès:", fullPath)
 	dirName := filepath.Base(j.fileDir)
-	_, err = file.WriteString(fmt.Sprintf("package %s\n\n", dirName))
-	return nil
+	if _, err = file.WriteString(fmt.Sprintf("package %s\n\n", dirName)); err != nil {
+		return nil, fmt.Errorf("erreur lors de l'écriture du fichier: %v", err)
+	}
+
+	return j.readFileContent()
 }
 
 // Fonction pour exécuter `go mod init` et `go mod tidy`
