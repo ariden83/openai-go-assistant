@@ -14,6 +14,7 @@ const (
 	stepVerifyTestPrompt    step = "verifyTestPrompt"
 	stepVerifySwaggerPrompt step = "stepVerifySwaggerPrompt"
 	stepStart               step = "start"
+	stepStartTest           step = "startTest"
 	stepOptimize            step = "optimize"
 	stepAddTest             step = "tests"
 	stepFinish              step = "finish"
@@ -42,7 +43,7 @@ var stepsOrderDefault = []StepWithError{
 // stepsOrderTest est une liste ordonnée des étapes pour les fichiers de test.
 var stepsOrderTest = []StepWithError{
 	{ValidStep: stepVerifyTestPrompt},
-	{ValidStep: stepStart, ErrorStep: stepStartError},
+	{ValidStep: stepStartTest, ErrorStep: stepAddTestError},
 }
 
 // stepsOrderSwagger est une liste ordonnée des étapes pour les fichiers swagger.
@@ -54,7 +55,7 @@ var stepsOrderSwagger = []StepWithError{
 // getStepFromFileName retourne les étapes à suivre en fonction du nom du fichier.
 func (j *job) getStepFromFileName() []StepWithError {
 	switch {
-	case strings.Contains(j.fileName, "test"):
+	case strings.HasSuffix(j.fileName, "_test.go"):
 		return stepsOrderTest
 	case strings.Contains(j.fileName, "swagger"):
 		return stepsOrderSwagger
@@ -63,6 +64,7 @@ func (j *job) getStepFromFileName() []StepWithError {
 	}
 }
 
+// getPromptForVerifyPrompt retourne un prompt pour vérifier si la question est une demande de code Go.
 func (j *job) getPromptForVerifyPrompt(prompt string) string {
 	switch j.currentStep {
 	case stepVerifyTestPrompt:
@@ -72,4 +74,33 @@ func (j *job) getPromptForVerifyPrompt(prompt string) string {
 	default:
 		return fmt.Sprintf(j.t("Responds with true or false in JSON. Is the following question a request for Go code")+" : \"%s\" ?", prompt)
 	}
+}
+
+// stepAddTestErrorProcessPrompt ajoute un prompt pour traiter les erreurs lors de l'ajout de tests.
+func (j *job) stepAddTestErrorProcessPrompt(output string) (string, error) {
+	getFailedTests, err := j.getFailedTests(output)
+	if err != nil {
+		fmt.Println(j.t("Error when recovering failed tests"), err)
+		return "", err
+	}
+
+	if getFailedTests == nil {
+		fmt.Println(j.t("No test failed"))
+		return "", nil
+	}
+
+	testCode, err := j.getTestCode(getFailedTests)
+	if err != nil {
+		fmt.Println("Error retrieving failed test code", err)
+		return "", err
+	}
+
+	prompt := j.t("The following tests") + " \n\n" + testCode + "\n\n " +
+		j.t("returned the following errors") + ": \n\n" +
+		j.t("Error") + " : " + output + "\n\n" +
+		j.t("Determines whether the problem is in the test file or the source file. Generates a concise response that specifies the file to modify in the form: \"MODIFY: <function or section name> (source file, not test file)\" or \"MODIFY: <function or section name> (test file)\"") + "." +
+		j.t("Then provide the corrected code in the form: \"CODE: <corrected code>\"") + "." +
+		j.t("responds without adding comments or explanations")
+
+	return prompt, nil
 }

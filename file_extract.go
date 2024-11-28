@@ -13,6 +13,41 @@ import (
 	"strings"
 )
 
+// getSourceFileName renvoie le nom du fichier source à partir du nom du fichier de test.
+func (j *job) getSourceFileName(testFileName string) string {
+	if strings.HasSuffix(testFileName, "_test.go") {
+		return strings.TrimSuffix(testFileName, "_test.go") + ".go"
+	}
+	return testFileName
+}
+
+// isTestFile vérifie si un fichier est un fichier de test.
+func (j *job) isTestFile(testFileName string) bool {
+	return strings.HasSuffix(testFileName, "_test.go")
+}
+
+// splitFileNameAndCode sépare le nom du fichier et le code d'une réponse.
+func (j *job) splitFileNameAndCode(response string) (fileName string, code string) {
+	parts := strings.SplitN(response, "CODE:", 2)
+	if len(parts) != 2 {
+		fmt.Println("response has no 2 parts")
+		return j.currentFileName, response
+	}
+
+	// Extract the file to modify
+	fileLine := strings.TrimSpace(parts[0])
+	isTestFile := strings.Contains(fileLine, "(test file)")
+	code = strings.TrimSpace(parts[1])
+
+	code = j.extractBackticks(code)
+
+	if !isTestFile {
+		return j.getSourceFileName(j.currentFileName), code
+	}
+	return j.currentFileName, code
+}
+
+// extractBackticks extrait le code Go d'une chaîne entourée de backticks.
 func (j *job) extractBackticks(code string) string {
 	// Si la chaîne commence et se termine par des backticks, on les supprime.
 	if strings.HasPrefix(code, "```go") && strings.HasSuffix(code, "```") {
@@ -38,7 +73,7 @@ func (j *job) extractFunctionsFromCode(code string) ([]*ast.FuncDecl, error) {
 	fs := token.NewFileSet()
 	node, err := parser.ParseFile(fs, "", code, parser.ParseComments)
 	if err != nil {
-		return nil, fmt.Errorf(j.t("error parsing code")+" : %v", err)
+		return nil, fmt.Errorf(j.t("error parsing code")+": %v", err)
 	}
 
 	var funcs []*ast.FuncDecl
@@ -62,7 +97,7 @@ func (j *job) extractStructsFromCode(code string) ([]*ast.TypeSpec, error) {
 	fs := token.NewFileSet()
 	node, err := parser.ParseFile(fs, "", code, parser.ParseComments)
 	if err != nil {
-		return nil, fmt.Errorf("erreur lors de l'analyse du code : %v", err)
+		return nil, fmt.Errorf(j.t("error parsing code")+": %v", err)
 	}
 
 	var structs []*ast.TypeSpec
@@ -93,7 +128,7 @@ func (j *job) extractInterfacesFromCode(code string) ([]*ast.TypeSpec, error) {
 	fs := token.NewFileSet()
 	node, err := parser.ParseFile(fs, "", code, parser.ParseComments)
 	if err != nil {
-		return nil, fmt.Errorf("erreur lors de l'analyse du code : %v", err)
+		return nil, fmt.Errorf(j.t("error parsing code")+": %v", err)
 	}
 
 	var interfaces []*ast.TypeSpec
@@ -124,7 +159,7 @@ func (j *job) extractConstsFromCode(code string) ([]*ast.GenDecl, error) {
 	fs := token.NewFileSet()
 	node, err := parser.ParseFile(fs, "", code, parser.ParseComments)
 	if err != nil {
-		return nil, fmt.Errorf("erreur lors de l'analyse du code : %v", err)
+		return nil, fmt.Errorf(j.t("error parsing code")+": %v", err)
 	}
 
 	var consts []*ast.GenDecl
@@ -147,7 +182,7 @@ func (j *job) extractVarsFromCode(code string) ([]*ast.GenDecl, error) {
 	fs := token.NewFileSet()
 	node, err := parser.ParseFile(fs, "", code, parser.ParseComments)
 	if err != nil {
-		return nil, fmt.Errorf("erreur lors de l'analyse du code : %v", err)
+		return nil, fmt.Errorf(j.t("error parsing code")+": %v", err)
 	}
 
 	var vars []*ast.GenDecl
@@ -161,19 +196,18 @@ func (j *job) extractVarsFromCode(code string) ([]*ast.GenDecl, error) {
 }
 
 // extractImportsFromCode extrait les déclarations d'import d'un code Go sous forme de chaîne.
-func extractImportsFromCode(code string) ([]string, error) {
-
+func (j *job) extractImportsFromCode(fromFile, code string) ([]string, error) {
 	if !strings.HasPrefix(code, "package") {
 		// Ajouter "package main" au début du code
 		code = "package main\n\nimport \"fmt\"\n\n" + code
 	}
 
-	fmt.Println("code", code, "end")
+	fmt.Println(fmt.Sprintf("code from: %s", fromFile), magenta(code), "end")
 	// Parser le fichier Go pour en extraire l'AST
 	fs := token.NewFileSet()
 	node, err := parser.ParseFile(fs, "", []byte(code), parser.ImportsOnly)
 	if err != nil {
-		return nil, fmt.Errorf("erreur lors de l'analyse des imports: %v", err)
+		return nil, fmt.Errorf(j.t("error parsing imports")+": %v", err)
 	}
 
 	var imports []string
@@ -184,20 +218,20 @@ func extractImportsFromCode(code string) ([]string, error) {
 }
 
 // extractLineNumber extrait le numéro de ligne d'un message d'erreur.
-func extractLineNumber(errorMessage string) (int, error) {
+func (j *job) extractLineNumber(errorMessage string) (int, error) {
 	// Expression régulière pour capturer le numéro de ligne
 	re := regexp.MustCompile(`:(\d+):\d+`)
 
 	// Rechercher la correspondance dans le message d'erreur
 	matches := re.FindStringSubmatch(errorMessage)
 	if len(matches) < 2 {
-		return 0, fmt.Errorf("numéro de ligne non trouvé dans le message d'erreur : %s", errorMessage)
+		return 0, fmt.Errorf(j.t("line number not found in error message")+" : %s", errorMessage)
 	}
 
 	// Convertir le numéro de ligne en entier
 	lineNumber, err := strconv.Atoi(matches[1])
 	if err != nil {
-		return 0, fmt.Errorf("erreur de conversion du numéro de ligne: %v", err)
+		return 0, fmt.Errorf(j.t("line number conversion error")+": %v", err)
 	}
 
 	return lineNumber, nil
@@ -208,14 +242,14 @@ func (j *job) extractFunctionFromLine(lineNumber int) (string, error) {
 	// Lire le fichier Go
 	data, err := ioutil.ReadFile(j.fileDir + "/" + j.currentFileName)
 	if err != nil {
-		return "", fmt.Errorf("erreur lors de la lecture du fichier: %v", err)
+		return "", fmt.Errorf(j.t("error reading file")+": %v", err)
 	}
 
 	// Créer un fichier tokeniseur
 	fs := token.NewFileSet()
 	node, err := parser.ParseFile(fs, j.fileDir+"/"+j.currentFileName, data, parser.ParseComments)
 	if err != nil {
-		return "", fmt.Errorf("erreur lors de l'analyse du fichier: %v", err)
+		return "", fmt.Errorf(j.t("error parsing file")+": %v", err)
 	}
 
 	// Parcours de l'AST (arbre syntaxique abstrait) pour trouver la fonction
@@ -235,7 +269,7 @@ func (j *job) extractFunctionFromLine(lineNumber int) (string, error) {
 			// Utiliser le printer Go pour imprimer le code de la fonction
 			err := printer.Fprint(&functionCode, fs, funcDecl)
 			if err != nil {
-				return "", fmt.Errorf("erreur lors de l'impression de la fonction: %v", err)
+				return "", fmt.Errorf(j.t("error printing function")+": %v", err)
 			}
 			return functionCode.String(), nil
 		}
@@ -257,14 +291,14 @@ func (j *job) extractFunctionFromLine(lineNumber int) (string, error) {
 
 // extractErrorForPrompt extrait le code de la fonction contenant l'erreur pour afficher dans le prompt.
 func (j *job) extractErrorForPrompt(output string) (string, error) {
-	errorLine, err := extractLineNumber(output)
+	errorLine, err := j.extractLineNumber(output)
 	if err != nil {
 		return "", err
 	}
-	fmt.Println("Numéro de ligne de l'erreur :", errorLine)
+	fmt.Println(j.t("Error line number")+": ", errorLine)
 	funcCode, err := j.extractFunctionFromLine(errorLine)
 	if err != nil {
-		return "", fmt.Errorf("erreur lors de l'extraction de la fonction: %v", err)
+		return "", fmt.Errorf(j.t("error extracting function")+": %v", err)
 	}
 	return funcCode, nil
 }
@@ -277,9 +311,20 @@ func (j *job) readFileContent() ([]byte, error) {
 	// Lire tout le contenu du fichier
 	data, err := ioutil.ReadFile(j.fileDir + "/" + j.currentFileName)
 	if err != nil {
-		return nil, fmt.Errorf("erreur lors de la lecture du fichier %s: %v", j.fileDir+"/"+j.currentFileName, err)
+		return nil, fmt.Errorf(j.t("error reading file")+" %s: %v", j.fileDir+"/"+j.currentFileName, err)
 	}
 	// Retourner le contenu sous forme de chaîne
+	return data, nil
+}
+
+func (j *job) readFileContentFromFileName(fileName string) ([]byte, error) {
+	if j.source == fileSourceStdin {
+		return []byte{}, nil
+	}
+	data, err := ioutil.ReadFile(j.fileDir + "/" + fileName)
+	if err != nil {
+		return nil, fmt.Errorf(j.t("error reading file")+" %s: %v", j.fileDir+"/"+fileName, err)
+	}
 	return data, nil
 }
 

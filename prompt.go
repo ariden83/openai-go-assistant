@@ -3,20 +3,27 @@ package main
 import (
 	"errors"
 	"fmt"
-	"github.com/fatih/color"
-	"github.com/manifoldco/promptui"
 	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/fatih/color"
+	"github.com/manifoldco/promptui"
 )
 
-var blue func(a ...interface{}) string
+var (
+	blue    func(a ...interface{}) string
+	green   func(a ...interface{}) string
+	magenta func(a ...interface{}) string
+)
 
 // init initialise la fonction blue pour afficher du texte en bleu.
 func init() {
 	blue = color.New(color.FgBlue).SprintFunc()
+	green = color.New(color.FgGreen).SprintFunc()
+	magenta = color.New(color.FgMagenta).SprintFunc()
 }
 
 // prepareGoPrompt ajoute le contexte pour spécifier que la question porte sur du code Go.

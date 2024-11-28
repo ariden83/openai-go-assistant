@@ -55,6 +55,7 @@
   "Warning or error": "Warning or error",
   "error parsing code": "error parsing code",
   "error running goimports": "error running goimports",
+  "Error to get code modified": "Error to get code modified",
   "Analysis of": "Analysis of",
   "Responds with true or false in JSON. Is the following question a request for Go code": "Responds with true or false. Is the following question a request for GOLANG code",
   "Responds with true or false in JSON. Is the following question a request for an enhancement related to Golang unit tests": "Responds with true or false. Is the following question a request for an enhancement related to GOLANG unit tests",
@@ -69,5 +70,17 @@
   "error during module initialization": "error during module initialization",
   "error running go mod tidy": "error running go mod tidy",
   "error running go mod vendor": "error running go mod vendor",
-  "error writing modified declaration": "error writing modified declaration"
+  "error writing modified declaration": "error writing modified declaration",
+  "line number not found in error message": "line number not found in error message",
+  "line number conversion error": "line number conversion error",
+  "error printing function": "error printing function",
+  "error extracting interfaces": "error extracting interfaces",
+  "error reading file": "error reading file",
+  "error extracting OpenAI imports": "error extracting OpenAI imports",
+  "error extracting structures": "error extracting structures",
+  "error extracting functions": "error extracting functions",
+  "error while formatting file": "error while formatting file",
+  "file to modify": "file to modify",
+  "Then provide the corrected code in the form: \"CODE: <corrected code>\"": "Then provide the corrected code in the form: \"CODE: <corrected code>\"",
+  "Determines whether the problem is in the test file or the source file. Generates a concise response that specifies the file to modify in the form: \"MODIFY: <function or section name> (source file, not test file)\" or \"MODIFY: <function or section name> (test file)\"": "Determines whether the problem is in the test file or the source file. Generates a concise response that specifies the file to modify in the form: \"MODIFY: <function or section name> (source file, not test file)\" or \"MODIFY: <function or section name> (test file)\""
 }

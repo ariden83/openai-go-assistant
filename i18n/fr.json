@@ -55,6 +55,7 @@
   "Warning or error": "Avertissement ou erreur",
   "error parsing code": "erreur d'analyse du code",
   "error running goimports": "erreur lors de l'exécution de goimports",
+  "Error to get code modified": "Erreur pour obtenir le code modifié",
   "Analysis of": "Analyse de",
   "Responds with true or false in JSON. Is the following question a request for Go code": "Répond avec true ou false. La question suivante est-elle une demande de code GOLANG",
   "Responds with true or false in JSON. Is the following question a request for an enhancement related to Golang unit tests": "Répond avec true ou false. La question suivante est-elle une demande d'amélioration liée aux tests unitaires GOLANG",
@@ -69,5 +70,17 @@
   "error during module initialization": "erreur lors de l'initialisation du module",
   "error running go mod tidy": "erreur lors de l'exécution de go mod tidy",
   "error running go mod vendor": "erreur lors de l'exécution de go mod vendor",
-  "error writing modified declaration": "erreur lors de l'écriture de la déclaration modifiée"
+  "error writing modified declaration": "erreur lors de l'écriture de la déclaration modifiée",
+  "line number not found in error message": "numéro de ligne non trouvé dans le message d'erreur",
+  "line number conversion error": "erreur de conversion du numéro de ligne",
+  "error printing function": "erreur lors de l'impression de la fonction",
+  "error extracting interfaces": "erreur lors de l'extraction des interfaces",
+  "error reading file": "erreur lors de la lecture du fichier",
+  "error extracting OpenAI imports": "erreur lors de l'extraction des imports OpenAI",
+  "error extracting structures": "erreur lors de l'extraction des structures",
+  "error extracting functions": "erreur lors de l'extraction des fonctions",
+  "error while formatting file": "erreur lors du formatage du fichier",
+  "file to modify": "fichier à modifier",
+  "Then provide the corrected code in the form: \"CODE: <corrected code>\"": "Puis fournissez le code corrigé sous la forme : \"CODE: <code corrigé>\"",
+  "Determines whether the problem is in the test file or the source file. Generates a concise response that specifies the file to modify in the form: \"MODIFY: <function or section name> (source file, not test file)\" or \"MODIFY: <function or section name> (test file)\"": "Détermine si le problème se trouve dans le fichier de test ou dans le fichier source. Génère une réponse concise qui spécifie le fichier à modifier sous la forme : \"MODIFY: <nom de la fonction ou de la section> (fichier source, pas fichier de test)\" ou \"MODIFY: <nom de la fonction ou de la section> (fichier de test)\""
 }

@@ -28,11 +28,11 @@ func addImport(existingImports []string, newImport string) []string {
 }
 
 // stepFixCode met à jour le code Go existant avec les suggestions d'OpenAI.
-func (j *job) stepFixCode(openAIResponse string) ([]byte, error) {
+func (j *job) stepFixCode(currentFileName, openAIResponse string) ([]byte, error) {
 	// Extraire les imports proposés par OpenAI
-	openAIImports, err := extractImportsFromCode(openAIResponse)
+	openAIImports, err := j.extractImportsFromCode("openAI", openAIResponse)
 	if err != nil {
-		return nil, fmt.Errorf("erreur lors de l'extraction des imports OpenAI: %v", err)
+		return nil, fmt.Errorf(j.t("error extracting OpenAI imports")+": %v", err)
 	}
 
 	var data []byte
@@ -40,16 +40,16 @@ func (j *job) stepFixCode(openAIResponse string) ([]byte, error) {
 	if j.source == fileSourceStdin {
 		data = []byte{}
 	} else {
-		data, err = ioutil.ReadFile(j.fileDir + "/" + j.currentFileName)
+		data, err = ioutil.ReadFile(j.fileDir + "/" + currentFileName)
 		if err != nil {
-			return nil, fmt.Errorf("erreur lors de la lecture du fichier: %v", err)
+			return nil, fmt.Errorf(j.t("error reading file")+" %s: %v", j.fileDir+"/"+currentFileName, err)
 		}
 	}
 
 	// Extraire les imports existants dans le fichier
-	existingImports, err := extractImportsFromCode(string(data))
+	existingImports, err := j.extractImportsFromCode("local", string(data))
 	if err != nil {
-		return nil, fmt.Errorf("erreur lors de l'extraction des imports existants: %v", err)
+		return nil, fmt.Errorf(j.t("error extracting existing imports")+": %v", err)
 	}
 
 	// Ajouter les imports OpenAI manquants aux imports existants
@@ -59,9 +59,9 @@ func (j *job) stepFixCode(openAIResponse string) ([]byte, error) {
 
 	// Créer un fichier tokeniseur
 	fs := token.NewFileSet()
-	node, err := parser.ParseFile(fs, j.fileDir+"/"+j.currentFileName, data, parser.ParseComments)
+	node, err := parser.ParseFile(fs, j.fileDir+"/"+currentFileName, data, parser.ParseComments)
 	if err != nil {
-		return nil, fmt.Errorf("erreur lors de l'analyse du fichier: %v", err)
+		return nil, fmt.Errorf(j.t("error parsing file")+": %v", err)
 	}
 
 	// Préparer un buffer pour le fichier modifié
@@ -99,7 +99,7 @@ func (j *job) stepFixCode(openAIResponse string) ([]byte, error) {
 
 	interfaces, err := j.extractInterfacesFromCode(openAIResponse)
 	if err != nil {
-		return nil, fmt.Errorf("erreur lors de l'extraction des interfaces: %v", err)
+		return nil, fmt.Errorf(j.t("error extracting interfaces")+": %v", err)
 	}
 
 	for _, openAIInterface := range interfaces {
@@ -138,7 +138,7 @@ func (j *job) stepFixCode(openAIResponse string) ([]byte, error) {
 
 	constants, err := j.extractConstsFromCode(openAIResponse)
 	if err != nil {
-		return nil, fmt.Errorf("erreur lors de l'extraction des constantes: %v", err)
+		return nil, fmt.Errorf(j.t("error extracting constants")+": %v", err)
 	}
 
 	for _, genConst := range constants {
@@ -185,7 +185,7 @@ func (j *job) stepFixCode(openAIResponse string) ([]byte, error) {
 
 	vars, err := j.extractVarsFromCode(openAIResponse)
 	if err != nil {
-		return nil, fmt.Errorf("erreur lors de l'extraction des variables: %v", err)
+		return nil, fmt.Errorf(j.t("error extracting variables")+": %v", err)
 	}
 
 	for _, genVar := range vars {
@@ -231,7 +231,7 @@ func (j *job) stepFixCode(openAIResponse string) ([]byte, error) {
 
 	structs, err := j.extractStructsFromCode(openAIResponse)
 	if err != nil {
-		return nil, fmt.Errorf("erreur lors de l'extraction des structures: %v", err)
+		return nil, fmt.Errorf(j.t("error extracting structures")+": %v", err)
 	}
 
 	for _, openAIStruct := range structs {
@@ -275,7 +275,7 @@ func (j *job) stepFixCode(openAIResponse string) ([]byte, error) {
 
 	funcs, err := j.extractFunctionsFromCode(openAIResponse)
 	if err != nil {
-		return nil, fmt.Errorf("erreur lors de l'extraction des fonctions: %v", err)
+		return nil, fmt.Errorf(j.t("error extracting functions")+": %v", err)
 	}
 
 	// Pour chaque déclaration dans le fichier, traiter les fonctions.
@@ -314,40 +314,38 @@ func (j *job) stepFixCode(openAIResponse string) ([]byte, error) {
 		modifiedFile.WriteString("\n\n")
 	}
 
-	// Affichage du code généré juste avant le formatage
-	// fmt.Println("Code généré avant formatage:\n", modifiedFile.String())
-
 	// Appliquer un formatage Go standard au code généré
 	formattedCode, err := format.Source(modifiedFile.Bytes())
 	if err != nil {
-		return nil, fmt.Errorf("erreur lors du formatage du fichier: %v", err)
+		return nil, fmt.Errorf(j.t("error while formatting file")+": %v", err)
 	}
 
 	// Sauvegarder le fichier modifié
 	return formattedCode, nil
-	//return ioutil.WriteFile(j.fileDir+"/"+j.currentFileName, formattedCode, 0644)
 }
 
 // writeFile écrit le contenu du fichier modifié dans le fichier d'origine, stdout ou un fichier de destination.
-func (j *job) writeFile(src, res []byte) error {
+func (j *job) writeFile(currentFileName string, src, res []byte) error {
 	out := os.Stdout
 	if !bytes.Equal(src, res) {
 		if j.args.listOnly {
-			_, _ = fmt.Fprintln(out, j.fileDir+"/"+j.currentFileName)
+			_, _ = fmt.Fprintln(out, j.fileDir+"/"+currentFileName)
 		}
+
 		if j.args.write {
 			if j.source == fileSourceStdin {
 				return errors.New("can't use -w on stdin")
 			}
-			return os.WriteFile(j.fileDir+"/"+j.currentFileName, res, 0o644)
+			return os.WriteFile(j.fileDir+"/"+currentFileName, res, 0o644)
 		}
 
 		if j.args.diffOnly {
 			if j.source == fileSourceStdin {
+				currentFileName = "stdin.go"
 				j.currentFileName = "stdin.go" // because <standard input>.orig looks silly
 			}
 
-			data, err := diff(src, res, j.fileDir+"/"+j.currentFileName)
+			data, err := diff(src, res, j.fileDir+"/"+currentFileName)
 			if err != nil {
 				return fmt.Errorf("computing diff: %v", err)
 			}

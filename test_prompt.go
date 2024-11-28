@@ -26,13 +26,18 @@ func (j *job) getTestFilename() (string, error) {
 
 func (j *job) getFailedTests(output string) ([]string, error) {
 	// Extraction des noms de tests ayant échoué depuis la sortie de `go test`
-	re := regexp.MustCompile(`--- FAIL: ([\w\/]+)`)
-	matches := re.FindAllStringSubmatch(output, -1)
+	reTest := regexp.MustCompile(`--- FAIL: ([\w\/]+)`)
+	matchesTest := reTest.FindAllStringSubmatch(output, -1)
+
+	// Extraction des fichiers avec erreur de build
+	reFile := regexp.MustCompile(`(.+\.go):(\d+):\d+: "([^"]+)" imported and not used`)
+	matchesFile := reFile.FindAllStringSubmatch(output, -1)
 
 	// Temporaire pour stocker les parents et enfants échoués
 	failedTestsMap := make(map[string][]string)
+	failedFiles := make(map[string]string) // Stocke les fichiers ayant échoué avec le message d'erreur
 
-	for _, match := range matches {
+	for _, match := range matchesTest {
 		if len(match) > 1 {
 			fullTestName := match[1]
 			segments := strings.Split(fullTestName, "/")
@@ -51,6 +56,15 @@ func (j *job) getFailedTests(output string) ([]string, error) {
 		}
 	}
 
+	// Récupérer les fichiers ayant généré des erreurs de compilation
+	for _, match := range matchesFile {
+		if len(match) > 2 {
+			file := match[1]
+			// Le fichier contenant l'erreur d'importation
+			failedFiles[file] = fmt.Sprintf("Error at line %s: %s", match[2], match[3])
+		}
+	}
+
 	// Construire la liste finale des tests ayant échoué
 	var failedTests []string
 	for parent, subTests := range failedTestsMap {
@@ -63,8 +77,17 @@ func (j *job) getFailedTests(output string) ([]string, error) {
 		}
 	}
 
+	// Si aucun test échoué, retourner nil
 	if len(failedTests) == 0 {
 		return nil, nil
+	}
+
+	// Afficher les fichiers d'erreur avec leurs messages
+	if len(failedFiles) > 0 {
+		fmt.Println("Files with errors:")
+		for file, errorMessage := range failedFiles {
+			fmt.Printf("%s: %s\n", file, errorMessage)
+		}
 	}
 
 	return failedTests, nil

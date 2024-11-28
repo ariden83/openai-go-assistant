@@ -140,6 +140,16 @@ func (j *job) run() error {
 			prompt += "\n\n" + j.printTestsFuncName()
 			prompt += "\n\n" + j.t("Can you generate the tests for the nominal cases as well as the error cases, without comment or explanation? My goal is to ensure comprehensive coverage, particularly for:\n\nExpected success scenarios (nominal cases)\nError handling scenarios\nPlease structure the tests to be easily readable, using t.Run to name each test case.")
 
+		} else if j.currentStep == stepStartTest {
+
+			prompt += ".\n\n" + j.t("Determines whether the problem is in the test file or the source file. Generates a concise response that specifies the file to modify in the form: \"MODIFY: <function or section name> (source file, not test file)\" or \"MODIFY: <function or section name> (test file)\"") + "." +
+				j.t("Then provide the corrected code in the form: \"CODE: <corrected code>\"") + ".\n\n"
+
+			fileContent := string(src)
+			if len(fileContent) > 50 {
+				prompt += ".\n\n" + j.t("Here is the Golang code") + " :\n\n" + fileContent
+			}
+
 		} else {
 			prompt = j.t(stepEntry.Prompt)
 
@@ -179,18 +189,26 @@ func (j *job) run() error {
 				}
 			}
 
-			codeModified, err := j.stepFixCode(code)
+			fmt.Println(fmt.Sprintf("API response:\n\n"+green("\"%s\"")+"\n\n", code))
+			// le test TestLivenessHandler a retourné les erreurs suivantes : Erreur : Erreur : --- FAIL: TestLivenessHandler (0.00s) \n--- FAIL: TestLivenessHandler/Error_case:_wrong_method_POST_instead_of_GET (0.00s) \n http_test.go:95: handler returned wrong status code: got 200 want 405 \n FAIL \n FAIL	generated_code_module	1.008s \n FAIL
+			fileToModify, code := j.splitFileNameAndCode(code)
+			fmt.Println(fmt.Sprintf(j.t("file to modify") + ": " + green(fileToModify) + "\n\n"))
+
+			if !j.isTestFile(fileToModify) {
+				src, err = j.readFileContentFromFileName(fileToModify)
+			}
+
+			codeModified, err := j.stepFixCode(fileToModify, code)
 			if err != nil {
 				fmt.Println(j.t("Error to get code modified"), err)
 				return err
 			}
 
-			if err := j.writeFile(src, codeModified); err != nil {
+			if err := j.writeFile(fileToModify, src, codeModified); err != nil {
 				fmt.Println(j.t("Error updating file"), err)
 				return err
 			}
 
-			// Exécuter go mod init et go mod tidy.
 			if err = j.updateGoMod(); err != nil {
 				fmt.Println(j.t("Error configuring Go modules"), err)
 				return err
@@ -203,6 +221,8 @@ func (j *job) run() error {
 			}
 
 			// Exécution du fichier Go.
+			// @todo : faire une boucle pour vérifier si le fichier source est correct
+			// et si le fichier de test est correct
 			output, err := j.runGolangFile()
 			if err != nil {
 				fmt.Println(fmt.Sprintf("------------------------------------ result (failed): \n\n %s", output))
@@ -210,27 +230,10 @@ func (j *job) run() error {
 
 				if j.currentStep == stepAddTestError {
 
-					getFailedTests, err := j.getFailedTests(output)
+					prompt, err = j.stepAddTestErrorProcessPrompt(output)
 					if err != nil {
-						fmt.Println(j.t("Error when recovering failed tests"), err)
 						return err
 					}
-
-					if getFailedTests == nil {
-						fmt.Println(j.t("No test failed"))
-						return nil
-					}
-
-					testCode, err := j.getTestCode(getFailedTests)
-					if err != nil {
-						fmt.Println("Error retrieving failed test code", err)
-						return err
-					}
-
-					prompt = j.t("The following tests") + " \n\n" + testCode + "\n\n " +
-						j.t("returned the following errors") + ": \n\n" +
-						j.t("Error") + " : " + output + "\n\n" +
-						j.t("responds without adding comments or explanations")
 
 				} else {
 					funcCode, err := j.extractErrorForPrompt(output)
