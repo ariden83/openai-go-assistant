@@ -1,6 +1,10 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+	"unicode"
+)
 
 // Fonction utilitaire pour obtenir le maximum entre deux entiers
 func max(a, b int) int {
@@ -50,4 +54,27 @@ func (f *ArrayStringFlag) Get() interface{} {
 func (f *ArrayStringFlag) Set(value string) error {
 	*f = append(*f, value)
 	return nil
+}
+
+// sanitizePackageName nettoie le nom du package pour qu'il soit valide.
+func sanitizePackageName(dirName string) string {
+	// Étape 1 : Remplacer les caractères non valides par _
+	sanitized := strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' {
+			return r
+		}
+		return '_'
+	}, dirName)
+
+	// Étape 2 : Si le nom commence par un chiffre, ajouter un préfixe
+	if len(sanitized) > 0 && unicode.IsDigit(rune(sanitized[0])) {
+		sanitized = "_" + sanitized
+	}
+
+	// Étape 3 : S'assurer que le nom n'est pas vide
+	if sanitized == "" {
+		sanitized = "main"
+	}
+
+	return sanitized
 }

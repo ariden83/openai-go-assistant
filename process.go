@@ -39,7 +39,7 @@ func newJob(cache *ConfigCache, fileDir string, args *appArgs) (*job, error) {
 		cache:                cache,
 		fileDir:              fileDir,
 		fileName:             "main.go",
-		currentStep:          stepVerifyPrompt,
+		currentStep:          stepDefault,
 		currentFileName:      "main.go",
 		listFunctionsUpdated: []string{},
 		listFunctionsCreated: []string{},
@@ -66,7 +66,6 @@ func (j *job) run() error {
 	if err := j.updateCache(); err != nil {
 		return err
 	}
-
 	src, err := j.readFileContent()
 	if err != nil {
 		return err
@@ -97,15 +96,20 @@ func (j *job) run() error {
 
 	prompt = j.prepareGoPrompt(prompt)
 
+	stepsOrder := j.getStepFromFileName()
 	for _, stepEntry := range stepsOrder {
 		j.currentStep = stepEntry.ValidStep
 		j.currentFileName = j.fileName
 
-		if j.currentStep == stepVerifyPrompt {
-			verifPrompt := fmt.Sprintf(j.t("Responds with true or false in JSON. Is the following question a request for Go code")+" : \"%s\" ?", prompt)
-			fmt.Println(fmt.Sprintf("\nprompt: "+blue("%s")+"\n\n", verifPrompt))
+		if j.currentStep == stepVerifyGoPrompt ||
+			j.currentStep == stepVerifyTestPrompt ||
+			j.currentStep == stepVerifySwaggerPrompt {
 
-			respContent, err := j.callIA(verifPrompt)
+			verifyPrompt := j.getPromptForVerifyPrompt(prompt)
+
+			fmt.Println(fmt.Sprintf("\nprompt: "+blue("%s")+"\n\n", verifyPrompt))
+
+			respContent, err := j.callIA(verifyPrompt)
 			if err != nil {
 				fmt.Println(j.t("Error checking prompt"), err)
 				return err
@@ -167,7 +171,7 @@ func (j *job) run() error {
 			}
 
 			if j.currentStep == stepAddTest {
-				// Écriture du code dans un fichier
+				// Écriture du code dans un fichier.
 				src, err = j.createNewTestFile()
 				if err != nil {
 					fmt.Println(j.t("Error writing file"), err)
@@ -186,19 +190,19 @@ func (j *job) run() error {
 				return err
 			}
 
-			// Exécuter go mod init et go mod tidy
+			// Exécuter go mod init et go mod tidy.
 			if err = j.updateGoMod(); err != nil {
 				fmt.Println(j.t("Error configuring Go modules"), err)
 				return err
 			}
 
-			// Exécution de goimports pour corriger les imports manquants
+			// Exécution de goimports pour corriger les imports manquants.
 			if err = j.fixImports(); err != nil {
 				fmt.Println(j.t("Error correcting imports"), err)
 				return err
 			}
 
-			// Exécution du fichier Go
+			// Exécution du fichier Go.
 			output, err := j.runGolangFile()
 			if err != nil {
 				fmt.Println(fmt.Sprintf("------------------------------------ result (failed): \n\n %s", output))

@@ -41,7 +41,7 @@ cd openai-go-assistant
 
 ### 2. Configure your OpenAI API keys:
 
-Add your OpenAI API keys and configure settings in an .env file located in the project root:
+Add your OpenAI API keys and configure settings in an **.goia** file located in the **project root** or in your **home directory**.:
 
 ```env
 language: "fr"

@@ -2,7 +2,7 @@ package main
 
 func (j *job) mockOpenAI(response *APIResponse) {
 	response.Error = nil
-	if j.currentStep == stepVerifyPrompt {
+	if j.currentStep == stepVerifyGoPrompt {
 		response.Choices = []Choice{
 			{
 				Message: Message{

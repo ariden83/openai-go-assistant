@@ -71,7 +71,7 @@ func process(args *appArgs, paths ...string) error {
 
 		if info.IsDir() {
 			// L'utilisateur a sélectionné un répertoire
-			fmt.Printf("Traitement du répertoire : %s\n", path)
+			fmt.Printf("traitement du répertoire : %s\n", path)
 			j.fileDir = path
 			if err := j.processFileFromFolder(); err != nil {
 				return err

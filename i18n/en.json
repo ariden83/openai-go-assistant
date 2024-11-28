@@ -28,7 +28,7 @@
     "file %s is not a Go file": "file %s is not a Go file",
   "Error parsing file": "Error parsing file",
     "Error printing function": "Error printing function",
-  "Optimize this Golang code taking into account readability, performance, and best practices. Only change behavior if it can be improved for more efficient or safer use cases. Return optimizations made, without comment or explanation. Here is the code: \nHere is the Golang code:\n\n": "Optimize this Golang code taking into account readability, performance, and best practices. Only change behavior if it can be improved for more efficient or safer use cases. Return optimizations made, without comment or explanation. Here is the code: \nHere is the Golang code:\n\n",
+  "Optimize this Golang code taking into account readability, performance, and best practices. Only change behavior if it can be improved for more efficient or safer use cases. Return optimizations made, without comment or explanation. Here is the code: \nHere is the Golang code:\n\n": "Optimize this Golang code taking into account readability, performance, and best practices. Only change behavior if it can be improved for more efficient or safer use cases. Return optimizations made, without comment or explanation.\nHere is the Golang code:\n\n",
   "I have some Golang code": "I have some Golang code",
   "I would like to enrich these functions with unit tests": "I would like to enrich these functions with unit tests",
   "Can you generate the tests for the nominal cases as well as the error cases, without comment or explanation? My goal is to ensure comprehensive coverage, particularly for:\n\nExpected success scenarios (nominal cases)\nError handling scenarios\nPlease structure the tests to be easily readable, using t.Run to name each test case. Provide succinct comments to explain each test. \nHere is the Golang code:": "I have some Golang code that I would like to enrich with unit tests. Can you generate the tests for the nominal cases as well as the error cases, without comment or explanation? My goal is to ensure comprehensive coverage, particularly for:\n\nExpected success scenarios (nominal cases)\nError handling scenarios\nPlease structure the tests to be easily readable, using t.Run to name each test case.\nHere is the Golang code:",
@@ -57,7 +57,17 @@
   "error running goimports": "error running goimports",
   "Analysis of": "Analysis of",
   "Responds with true or false in JSON. Is the following question a request for Go code": "Responds with true or false. Is the following question a request for GOLANG code",
+  "Responds with true or false in JSON. Is the following question a request for an enhancement related to Golang unit tests": "Responds with true or false. Is the following question a request for an enhancement related to GOLANG unit tests",
+  "Responds with true or false in JSON. Is the following question a request for generating or updating a Swagger interface": "Responds with true or false. Is the following question a request for generating or updating a Swagger interface",
   "The question is not a request for Go code": "The question is not a request for GOLANG code",
   "Write code in Go to solve the following problem": "Write code in GOLANG to solve the following problem",
-  "Error checking prompt": "Error checking prompt"
+  "Error checking prompt": "Error checking prompt",
+  "File created successfully": "File created successfully",
+  "The file already exists": "The file already exists",
+  "error writing file": "error writing file",
+  "error when checking for existence of file": "error when checking for existence of file",
+  "error during module initialization": "error during module initialization",
+  "error running go mod tidy": "error running go mod tidy",
+  "error running go mod vendor": "error running go mod vendor",
+  "error writing modified declaration": "error writing modified declaration"
 }

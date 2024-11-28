@@ -3,22 +3,23 @@ package main
 import (
 	"errors"
 	"fmt"
+	"github.com/fatih/color"
+	"github.com/manifoldco/promptui"
 	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/fatih/color"
-	"github.com/manifoldco/promptui"
 )
 
 var blue func(a ...interface{}) string
 
+// init initialise la fonction blue pour afficher du texte en bleu.
 func init() {
 	blue = color.New(color.FgBlue).SprintFunc()
 }
 
+// prepareGoPrompt ajoute le contexte pour spécifier que la question porte sur du code Go.
 func (j *job) prepareGoPrompt(userPrompt string) string {
 	// Ajouter le contexte pour spécifier que la question porte sur du code Go
 	goContextPrefix := j.t("Write code in Go to solve the following problem") + " :\n\n"
@@ -26,6 +27,7 @@ func (j *job) prepareGoPrompt(userPrompt string) string {
 	return goContextPrefix + userPrompt + goContextSuffix
 }
 
+// loadFilesFromFolder lit les fichiers dans le répertoire donné.
 func (j *job) loadFilesFromFolder() ([]string, error) {
 	var files []string
 	err := filepath.Walk(j.fileDir, func(path string, info os.FileInfo, err error) error {
@@ -40,6 +42,7 @@ func (j *job) loadFilesFromFolder() ([]string, error) {
 	return files, err
 }
 
+// promptSelectAFileOrCreateANewOne demande à l'utilisateur de sélectionner un fichier existant ou de créer un nouveau fichier.
 func (j *job) promptSelectAFileOrCreateANewOne(filesFound []string) error {
 	confirmPrompt := promptui.Prompt{
 		Label:     fmt.Sprintf(j.t("Files found in repo %s, create one"), j.fileDir),
@@ -53,6 +56,7 @@ func (j *job) promptSelectAFileOrCreateANewOne(filesFound []string) error {
 	return j.promptSelectExistentFile(filesFound)
 }
 
+// promptSelectExistentFile demande à l'utilisateur de sélectionner un fichier existant.
 func (j *job) promptSelectExistentFile(filesFound []string) error {
 	// Créer un prompt pour sélectionner un fichier
 	filePrompt := promptui.Select{
@@ -87,6 +91,7 @@ func (j *job) promptSelectExistentFile(filesFound []string) error {
 	return nil
 }
 
+// promptNoFilesFoundCreateANewFile demande à l'utilisateur de créer un nouveau fichier.
 func (j *job) promptNoFilesFoundCreateANewFile() error {
 	// Prompt de confirmation pour générer un fichier
 	confirmPrompt := promptui.Prompt{
@@ -103,6 +108,7 @@ func (j *job) promptNoFilesFoundCreateANewFile() error {
 	return j.promptCreateANewFile()
 }
 
+// getDirectories lit les dossiers dans le répertoire racine.
 func (j *job) getDirectories() ([]string, error) {
 	var directories []string
 
@@ -119,7 +125,7 @@ func (j *job) getDirectories() ([]string, error) {
 	return directories, nil
 }
 
-// Fonction pour l'étape 1 : sélectionner un dossier ou en entrer un nouveau
+// promptSelectOrCreateDirectory demande à l'utilisateur de sélectionner un dossier existant ou de créer un nouveau dossier.
 func (j *job) promptSelectOrCreateDirectory() (string, error) {
 	// Lire les dossiers existants dans le répertoire racine
 	directories, err := j.getDirectories()
@@ -161,6 +167,7 @@ func (j *job) promptSelectOrCreateDirectory() (string, error) {
 	return selectedDir, nil
 }
 
+// promptCreateANewFile demande à l'utilisateur de sélectionner un dossier ou de créer un nouveau fichier.
 func (j *job) promptCreateANewFile() error {
 	fmt.Println(j.t("Select a folder or enter a new path") + " :")
 	selectedDir, err := j.promptSelectOrCreateDirectory()
@@ -226,7 +233,7 @@ func (j *job) promptCreateANewFile() error {
 	return nil
 }
 
-// createFile crée un fichier vide avec le nom spécifié
+// createFileWithPackage crée un fichier avec le nom donné et ajoute la ligne de package.
 func (j *job) createFileWithPackage(filename string) error {
 	file, err := os.Create(j.fileDir + "/" + filename)
 	if err != nil {
@@ -235,12 +242,13 @@ func (j *job) createFileWithPackage(filename string) error {
 	defer file.Close()
 
 	dirName := filepath.Base(j.fileDir)
+	packageName := sanitizePackageName(dirName)
 	// Ajouter la ligne de package en haut du fichier
-	_, err = file.WriteString(fmt.Sprintf("package %s\n\n", dirName))
+	_, err = file.WriteString(fmt.Sprintf("package %s\n\n", packageName))
 	return err
 }
 
-// Fonction pour demander à l'utilisateur de renseigner sa question
+// promptForQuery demande à l'utilisateur de saisir une question ou une requête.
 func (j *job) promptForQuery() (string, error) {
 	// Définir le prompt
 	prompt := promptui.Prompt{

@@ -1,6 +1,0 @@
-language: "fr"
-openai_model: "gpt-4-turbo"
-openai_url: "https://api.openai.com/v1/chat/completions"
-openai_temperature: 0.6
-openai_max_tokens: 256
-max_attempts: 3

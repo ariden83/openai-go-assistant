@@ -15,7 +15,7 @@ import (
 	"path/filepath"
 )
 
-// Fonction pour ajouter un import à un bloc d'import existant
+// addImport ajoute un import à la liste des imports existants.
 func addImport(existingImports []string, newImport string) []string {
 	// Vérifier si l'import existe déjà
 	for _, imp := range existingImports {
@@ -27,6 +27,7 @@ func addImport(existingImports []string, newImport string) []string {
 	return append(existingImports, newImport)
 }
 
+// stepFixCode met à jour le code Go existant avec les suggestions d'OpenAI.
 func (j *job) stepFixCode(openAIResponse string) ([]byte, error) {
 	// Extraire les imports proposés par OpenAI
 	openAIImports, err := extractImportsFromCode(openAIResponse)
@@ -259,7 +260,7 @@ func (j *job) stepFixCode(openAIResponse string) ([]byte, error) {
 			}
 		}
 
-		// Si la struct n'a pas été trouvée dans les déclarations existantes, l'ajouter
+		// Si la struct n'a pas été trouvée dans les déclarations existantes, l'ajouter.
 		if !found {
 			genDecl := &ast.GenDecl{
 				Tok: token.TYPE,
@@ -279,16 +280,16 @@ func (j *job) stepFixCode(openAIResponse string) ([]byte, error) {
 
 	// Pour chaque déclaration dans le fichier, traiter les fonctions.
 	for _, openAIFunc := range funcs {
-		found := false // Indique si la fonction OpenAI a été trouvée dans les déclarations existantes
+		found := false // Indique si la fonction OpenAI a été trouvée dans les déclarations existantes.
 
 		for _, decl := range node.Decls[1:] {
 			funcDecl, ok := decl.(*ast.FuncDecl)
 			if ok {
-				// Si la fonction est complète, vérifier si elle correspond à celle d'OpenAI
+				// Si la fonction est complète, vérifier si elle correspond à celle d'OpenAI.
 				if isCompleteFunction(funcDecl) && funcDecl.Name.Name == openAIFunc.Name.Name {
 					fullFuncName := extractFunctionDetails(funcDecl)
 					j.listFunctionsUpdated = append(j.listFunctionsUpdated, fullFuncName)
-					// Remplacer le corps de la fonction existante par celui d'OpenAI
+					// Remplacer le corps de la fonction existante par celui d'OpenAI.
 					funcDecl.Body = openAIFunc.Body
 					found = true
 					break
@@ -296,7 +297,7 @@ func (j *job) stepFixCode(openAIResponse string) ([]byte, error) {
 			}
 		}
 
-		// Si la fonction n'a pas été trouvée dans les déclarations existantes, l'ajouter
+		// Si la fonction n'a pas été trouvée dans les déclarations existantes, l'ajouter.
 		if !found {
 			fullFuncName := extractFunctionDetails(openAIFunc)
 			// Ajouter la fonction OpenAI à la liste des fonctions mises à jour.
@@ -308,7 +309,7 @@ func (j *job) stepFixCode(openAIResponse string) ([]byte, error) {
 	// Ajouter toutes les déclarations modifiées au fichier modifié.
 	for _, decl := range node.Decls {
 		if err = printer.Fprint(&modifiedFile, fs, decl); err != nil {
-			return nil, fmt.Errorf("erreur lors de l'écriture de la déclaration modifiée: %v", err)
+			return nil, fmt.Errorf(j.t("error writing modified declaration")+": %v", err)
 		}
 		modifiedFile.WriteString("\n\n")
 	}
@@ -327,6 +328,7 @@ func (j *job) stepFixCode(openAIResponse string) ([]byte, error) {
 	//return ioutil.WriteFile(j.fileDir+"/"+j.currentFileName, formattedCode, 0644)
 }
 
+// writeFile écrit le contenu du fichier modifié dans le fichier d'origine, stdout ou un fichier de destination.
 func (j *job) writeFile(src, res []byte) error {
 	out := os.Stdout
 	if !bytes.Equal(src, res) {
@@ -362,38 +364,38 @@ func (j *job) writeFile(src, res []byte) error {
 	return nil
 }
 
-// createNewFile crée un nouveau fichier de test, si il existe déjà, il le lit.
+// createNewTestFile crée un nouveau fichier s'il n'existe pas déjà.
 func (j *job) createNewTestFile() ([]byte, error) {
-	// Construit le chemin complet du fichier
+	// Construit le chemin complet du fichier.
 	fullPath := filepath.Join(j.fileDir, j.currentFileName)
 
-	// Vérifie si le fichier existe déjà
+	// Vérifie si le fichier existe déjà.
 	if _, err := os.Stat(fullPath); err == nil {
-		fmt.Println("Le fichier existe déjà:", fullPath)
-
+		fmt.Println(j.t("The file already exists"), fullPath)
 		return j.readFileContent()
 
 	} else if !os.IsNotExist(err) {
-		return nil, fmt.Errorf("erreur lors de la vérification de l'existence du fichier: %v", err)
+		return nil, fmt.Errorf(j.t("error when checking for existence of file")+": %v", err)
 	}
 
 	// Crée un fichier vide
 	file, err := os.Create(fullPath)
 	if err != nil {
-		return nil, fmt.Errorf("erreur lors de la création du fichier: %v", err)
+		return nil, fmt.Errorf(j.t("error creating file")+": %v", err)
 	}
 	defer file.Close()
 
-	fmt.Println("Fichier créé avec succès:", fullPath)
+	fmt.Println(j.t("File created successfully"), fullPath)
 	dirName := filepath.Base(j.fileDir)
-	if _, err = file.WriteString(fmt.Sprintf("package %s\n\n", dirName)); err != nil {
-		return nil, fmt.Errorf("erreur lors de l'écriture du fichier: %v", err)
+	packageName := sanitizePackageName(dirName)
+	if _, err = file.WriteString(fmt.Sprintf("package %s\n\n", packageName)); err != nil {
+		return nil, fmt.Errorf(j.t("error writing file")+": %v", err)
 	}
 
 	return j.readFileContent()
 }
 
-// Fonction pour exécuter `go mod init` et `go mod tidy`
+// setupGoMod initialise le module Go si le fichier go.mod n'existe pas.
 func (j *job) setupGoMod() error {
 	// Initialisation du module si le fichier go.mod n'existe pas
 	goModPath := filepath.Join(j.fileDir, "go.mod")
@@ -401,24 +403,25 @@ func (j *job) setupGoMod() error {
 		cmdInit := exec.Command("go", "mod", "init", "generated_code_module")
 		cmdInit.Dir = j.fileDir // Définit le répertoire de travail pour `go mod init`
 		if output, err := cmdInit.CombinedOutput(); err != nil {
-			return fmt.Errorf("erreur lors de l'initialisation du module: %v - %s", err, output)
+			return fmt.Errorf(j.t("error during module initialization")+": %v - %s", err, output)
 		}
 	}
 	return nil
 }
 
+// updateGoMod met à jour le fichier go.mod et le dossier vendor si nécessaire.
 func (j *job) updateGoMod() error {
 	cmdTidy := exec.Command("go", "mod", "tidy")
 	cmdTidy.Dir = j.fileDir // Définit le répertoire de travail pour `go mod tidy`
 	if output, err := cmdTidy.CombinedOutput(); err != nil {
-		return fmt.Errorf("erreur lors de l'exécution de go mod tidy: %v - %s", err, output)
+		return fmt.Errorf(j.t("error running go mod tidy")+": %v - %s", err, output)
 	}
 
 	if j.fileWithVendor {
 		cmdVendor := exec.Command("go", "mod", "vendor")
 		cmdVendor.Dir = j.fileDir // Définit le répertoire de travail pour `go mod vendor`
 		if output, err := cmdVendor.CombinedOutput(); err != nil {
-			return fmt.Errorf("erreur lors de l'exécution de go mod vendor: %v - %s", err, output)
+			return fmt.Errorf(j.t("error running go mod vendor")+": %v - %s", err, output)
 		}
 	}
 	return nil

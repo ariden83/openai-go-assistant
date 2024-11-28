@@ -64,6 +64,7 @@ func (j *job) updateCache() error {
 	if err != nil {
 		return err
 	}
+
 	j.openAITemperature = cfg.OpenAITemperature
 	j.openAIURL = cfg.OpenAIURL
 	j.openAIModel = cfg.OpenAIModel
@@ -140,7 +141,6 @@ func (cache *ConfigCache) get(dirPath string) (*Config, error) {
 	}
 
 	var parentCfg *Config
-
 	goModFilepath := filepath.Join(dirPath, "go.mod")
 	modname, goModFileExists, err := getModuleNameFromGoModFile(goModFilepath)
 	if err != nil {
@@ -159,14 +159,31 @@ func (cache *ConfigCache) get(dirPath string) (*Config, error) {
 		}
 	}
 
+	// Nouvelle étape : Vérifier le fichier .goia dans le répertoire HOME si nécessaire
+	var homeCfg *Config
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, err
+	}
+
+	homeCfgPath := filepath.Join(homeDir, ".goia")
+	homeCfg, err = readConfigFile(homeCfgPath)
+	if err != nil && !os.IsNotExist(err) { // Ignorer si le fichier n'existe pas
+		return nil, err
+	}
+
 	localCfg, err := readConfigFile(filepath.Join(dirPath, ".goia"))
 	if err != nil {
 		return nil, err
 	}
 
+	// Fusionner les configurations
 	cfg = parentCfg
+	if homeCfg != nil {
+		cfg = cfg.Merge(homeCfg) // Fusionner la config HOME si trouvée
+	}
 	if localCfg != nil {
-		cfg = cfg.Merge(localCfg)
+		cfg = cfg.Merge(localCfg) // Fusionner la config locale si trouvée
 	}
 
 	if cfg == nil {
@@ -174,7 +191,6 @@ func (cache *ConfigCache) get(dirPath string) (*Config, error) {
 	}
 
 	cache.configs[dirPath] = cfg
-
 	return cfg, nil
 }
 
