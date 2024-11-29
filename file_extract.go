@@ -73,7 +73,7 @@ func (j *job) extractFunctionsFromCode(code string) ([]*ast.FuncDecl, error) {
 	fs := token.NewFileSet()
 	node, err := parser.ParseFile(fs, "", code, parser.ParseComments)
 	if err != nil {
-		return nil, fmt.Errorf(j.t("error parsing code")+": %v", err)
+		return nil, fmt.Errorf(j.t("error parsing functions from code")+": %v", err)
 	}
 
 	var funcs []*ast.FuncDecl
@@ -97,7 +97,7 @@ func (j *job) extractStructsFromCode(code string) ([]*ast.TypeSpec, error) {
 	fs := token.NewFileSet()
 	node, err := parser.ParseFile(fs, "", code, parser.ParseComments)
 	if err != nil {
-		return nil, fmt.Errorf(j.t("error parsing code")+": %v", err)
+		return nil, fmt.Errorf(j.t("error parsing structs from code")+": %v", err)
 	}
 
 	var structs []*ast.TypeSpec
@@ -119,7 +119,6 @@ func (j *job) extractStructsFromCode(code string) ([]*ast.TypeSpec, error) {
 
 // extractInterfacesFromCode extrait les déclarations d'interface d'un code Go sous forme de chaîne.
 func (j *job) extractInterfacesFromCode(code string) ([]*ast.TypeSpec, error) {
-
 	if !strings.HasPrefix(code, "package") {
 		// Ajouter "package main" au début du code
 		code = "package main\n\nimport \"fmt\"\n\n" + code
@@ -128,7 +127,7 @@ func (j *job) extractInterfacesFromCode(code string) ([]*ast.TypeSpec, error) {
 	fs := token.NewFileSet()
 	node, err := parser.ParseFile(fs, "", code, parser.ParseComments)
 	if err != nil {
-		return nil, fmt.Errorf(j.t("error parsing code")+": %v", err)
+		return nil, fmt.Errorf(j.t("error parsing interfaces from code")+": %v", err)
 	}
 
 	var interfaces []*ast.TypeSpec
@@ -159,7 +158,7 @@ func (j *job) extractConstsFromCode(code string) ([]*ast.GenDecl, error) {
 	fs := token.NewFileSet()
 	node, err := parser.ParseFile(fs, "", code, parser.ParseComments)
 	if err != nil {
-		return nil, fmt.Errorf(j.t("error parsing code")+": %v", err)
+		return nil, fmt.Errorf(j.t("error parsing consts from code")+": %v", err)
 	}
 
 	var consts []*ast.GenDecl
@@ -182,7 +181,7 @@ func (j *job) extractVarsFromCode(code string) ([]*ast.GenDecl, error) {
 	fs := token.NewFileSet()
 	node, err := parser.ParseFile(fs, "", code, parser.ParseComments)
 	if err != nil {
-		return nil, fmt.Errorf(j.t("error parsing code")+": %v", err)
+		return nil, fmt.Errorf(j.t("error parsing variables from code")+": %v", err)
 	}
 
 	var vars []*ast.GenDecl
@@ -240,14 +239,14 @@ func (j *job) extractLineNumber(errorMessage string) (int, error) {
 // extractFunctionFromLine extrait le code d'une fonction à partir du numéro de ligne.
 func (j *job) extractFunctionFromLine(lineNumber int) (string, error) {
 	// Lire le fichier Go
-	data, err := ioutil.ReadFile(j.fileDir + "/" + j.currentFileName)
+	data, err := ioutil.ReadFile(j.fileDir + "/" + j.currentSourceFileName)
 	if err != nil {
 		return "", fmt.Errorf(j.t("error reading file")+": %v", err)
 	}
 
 	// Créer un fichier tokeniseur
 	fs := token.NewFileSet()
-	node, err := parser.ParseFile(fs, j.fileDir+"/"+j.currentFileName, data, parser.ParseComments)
+	node, err := parser.ParseFile(fs, j.fileDir+"/"+j.currentSourceFileName, data, parser.ParseComments)
 	if err != nil {
 		return "", fmt.Errorf(j.t("error parsing file")+": %v", err)
 	}
@@ -289,6 +288,27 @@ func (j *job) extractFunctionFromLine(lineNumber int) (string, error) {
 	return surroundingCode.String(), nil
 }
 
+// extractUnusedImports extrait les imports inutilisés d'un message d'erreur.
+func (j *job) extractUnusedImports(errorMessage string) ([]string, error) {
+	// Regex pour trouver les imports inutilisés dans les erreurs
+	re := regexp.MustCompile(`\./.*:\d+:\d+: "([^"]+)" imported and not used`)
+	matches := re.FindAllStringSubmatch(errorMessage, -1)
+
+	if len(matches) == 0 {
+		return nil, fmt.Errorf("aucun import inutilisé trouvé")
+	}
+
+	// Extraire les imports inutilisés
+	var unusedImports []string
+	for _, match := range matches {
+		if len(match) > 1 {
+			unusedImports = append(unusedImports, match[1])
+		}
+	}
+
+	return unusedImports, nil
+}
+
 // extractErrorForPrompt extrait le code de la fonction contenant l'erreur pour afficher dans le prompt.
 func (j *job) extractErrorForPrompt(output string) (string, error) {
 	errorLine, err := j.extractLineNumber(output)
@@ -304,27 +324,16 @@ func (j *job) extractErrorForPrompt(output string) (string, error) {
 }
 
 // ReadFileContent lit le contenu d'un fichier et le retourne sous forme de chaîne de caractères.
-func (j *job) readFileContent() ([]byte, error) {
+func (j *job) readFileContent(file string) ([]byte, error) {
 	if j.source == fileSourceStdin {
 		return []byte{}, nil
 	}
 	// Lire tout le contenu du fichier
-	data, err := ioutil.ReadFile(j.fileDir + "/" + j.currentFileName)
+	data, err := ioutil.ReadFile(j.fileDir + "/" + file)
 	if err != nil {
-		return nil, fmt.Errorf(j.t("error reading file")+" %s: %v", j.fileDir+"/"+j.currentFileName, err)
+		return nil, fmt.Errorf(j.t("error reading file")+" %s: %v", j.fileDir+"/"+file, err)
 	}
 	// Retourner le contenu sous forme de chaîne
-	return data, nil
-}
-
-func (j *job) readFileContentFromFileName(fileName string) ([]byte, error) {
-	if j.source == fileSourceStdin {
-		return []byte{}, nil
-	}
-	data, err := ioutil.ReadFile(j.fileDir + "/" + fileName)
-	if err != nil {
-		return nil, fmt.Errorf(j.t("error reading file")+" %s: %v", j.fileDir+"/"+fileName, err)
-	}
 	return data, nil
 }
 

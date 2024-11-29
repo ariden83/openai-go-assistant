@@ -42,7 +42,7 @@ var stepsOrderDefault = []StepWithError{
 
 // stepsOrderTest est une liste ordonnée des étapes pour les fichiers de test.
 var stepsOrderTest = []StepWithError{
-	{ValidStep: stepVerifyTestPrompt},
+	//{ValidStep: stepVerifyTestPrompt},
 	{ValidStep: stepStartTest, ErrorStep: stepAddTestError},
 }
 
@@ -53,15 +53,45 @@ var stepsOrderSwagger = []StepWithError{
 }
 
 // getStepFromFileName retourne les étapes à suivre en fonction du nom du fichier.
-func (j *job) getStepFromFileName() []StepWithError {
+func (j *job) getStepFromFileName() ([]StepWithError, error) {
+	stepChoose := stepsOrderDefault
 	switch {
 	case strings.HasSuffix(j.fileName, "_test.go"):
-		return stepsOrderTest
+		j.currentTestFileName = j.fileName
+		j.currentSourceFileName = j.getSourceFileName(j.fileName)
+		j.currentFileName = j.currentSourceFileName
+		stepChoose = stepsOrderTest
+
 	case strings.Contains(j.fileName, "swagger"):
-		return stepsOrderSwagger
+		return stepsOrderSwagger, nil
+
 	default:
-		return stepsOrderDefault
+		j.currentFileName = j.fileName
+		j.currentSourceFileName = j.fileName
+		{
+			testFileName, err := j.getTestFilename()
+			if err != nil {
+				return stepChoose, err
+			}
+			j.currentTestFileName = testFileName
+		}
 	}
+
+	{
+		src, err := j.readFileContent(j.currentSourceFileName)
+		if err != nil {
+			return stepChoose, err
+		}
+		j.currentSrcSource = src
+	}
+	{
+		src, err := j.createNewTestFile()
+		if err != nil {
+			return stepChoose, err
+		}
+		j.currentSrcTest = src
+	}
+	return stepChoose, nil
 }
 
 // getPromptForVerifyPrompt retourne un prompt pour vérifier si la question est une demande de code Go.

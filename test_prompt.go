@@ -24,8 +24,9 @@ func (j *job) getTestFilename() (string, error) {
 	return testFilename, nil
 }
 
+// getFailedTests prend la sortie de `go test` et retourne les noms des tests ayant échoué.
 func (j *job) getFailedTests(output string) ([]string, error) {
-	// Extraction des noms de tests ayant échoué depuis la sortie de `go test`
+	// Extraction des noms de tests ayant échoué depuis la sortie de `go test`.
 	reTest := regexp.MustCompile(`--- FAIL: ([\w\/]+)`)
 	matchesTest := reTest.FindAllStringSubmatch(output, -1)
 
@@ -35,7 +36,7 @@ func (j *job) getFailedTests(output string) ([]string, error) {
 
 	// Temporaire pour stocker les parents et enfants échoués
 	failedTestsMap := make(map[string][]string)
-	failedFiles := make(map[string]string) // Stocke les fichiers ayant échoué avec le message d'erreur
+	failedFiles := make(map[string]string) // Stocke les fichiers ayant échoué avec le message d'erreur.
 
 	for _, match := range matchesTest {
 		if len(match) > 1 {
@@ -93,9 +94,10 @@ func (j *job) getFailedTests(output string) ([]string, error) {
 	return failedTests, nil
 }
 
+// getTestCode prend une liste de noms de tests ayant échoué et retourne le code de ces tests.
 func (j *job) getTestCode(failedTests []string) (string, error) {
 	fset := token.NewFileSet()
-	node, err := parser.ParseFile(fset, j.fileDir+"/"+j.currentFileName, nil, parser.ParseComments)
+	node, err := parser.ParseFile(fset, j.fileDir+"/"+j.currentTestFileName, nil, parser.ParseComments)
 	if err != nil {
 		return "", fmt.Errorf(j.t("Error parsing file"), err)
 	}

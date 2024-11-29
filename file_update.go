@@ -9,10 +9,10 @@ import (
 	"go/parser"
 	"go/printer"
 	"go/token"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 // addImport ajoute un import à la liste des imports existants.
@@ -27,8 +27,79 @@ func addImport(existingImports []string, newImport string) []string {
 	return append(existingImports, newImport)
 }
 
+func (j *job) removeUnusedImports(unusedImports []string, currentFileName string) error {
+	var data []byte
+	if currentFileName == j.currentSourceFileName {
+		data = j.currentSrcSource
+	} else if currentFileName == j.currentTestFileName {
+		data = j.currentSrcTest
+	}
+
+	// Créer une FileSet pour gérer le fichier source
+	fs := token.NewFileSet()
+
+	// Parser le fichier source pour obtenir son AST
+	node, err := parser.ParseFile(fs, j.fileDir+"/"+currentFileName, data, parser.ParseComments)
+	if err != nil {
+		return fmt.Errorf("impossible de parser le fichier: %w", err)
+	}
+
+	// Convertir la liste des imports inutilisés en un map pour faciliter la recherche
+	unusedMap := make(map[string]struct{})
+	for _, imp := range unusedImports {
+		unusedMap[imp] = struct{}{}
+	}
+
+	// Filtrer les déclarations d'import
+	var newDecls []ast.Decl
+	for _, decl := range node.Decls {
+		genDecl, ok := decl.(*ast.GenDecl)
+		if !ok || genDecl.Tok != token.IMPORT {
+			// Ajouter les déclarations qui ne sont pas des imports
+			newDecls = append(newDecls, decl)
+			continue
+		}
+
+		// Filtrer les spécifications d'import dans GenDecl
+		var newSpecs []ast.Spec
+		for _, spec := range genDecl.Specs {
+			importSpec, ok := spec.(*ast.ImportSpec)
+			if !ok {
+				newSpecs = append(newSpecs, spec)
+				continue
+			}
+
+			// Extraire le chemin de l'import (sans guillemets)
+			importPath := strings.Trim(importSpec.Path.Value, "\"")
+			if _, found := unusedMap[importPath]; !found {
+				// Conserver l'import s'il n'est pas inutilisé
+				newSpecs = append(newSpecs, spec)
+			}
+		}
+
+		// Si des imports restent, conserver cette déclaration
+		if len(newSpecs) > 0 {
+			genDecl.Specs = newSpecs
+			newDecls = append(newDecls, genDecl)
+		}
+	}
+
+	// Mettre à jour les déclarations du fichier AST
+	node.Decls = newDecls
+
+	formattedCode, err := j.nodeToBytes(fs, node)
+	if err != nil {
+		return fmt.Errorf("impossible de formater le code: %w", err)
+	}
+
+	return j.writeFile(currentFileName, formattedCode)
+}
+
 // stepFixCode met à jour le code Go existant avec les suggestions d'OpenAI.
 func (j *job) stepFixCode(currentFileName, openAIResponse string) ([]byte, error) {
+
+	openAIResponse = strings.TrimSpace(openAIResponse)
+
 	// Extraire les imports proposés par OpenAI
 	openAIImports, err := j.extractImportsFromCode("openAI", openAIResponse)
 	if err != nil {
@@ -36,14 +107,10 @@ func (j *job) stepFixCode(currentFileName, openAIResponse string) ([]byte, error
 	}
 
 	var data []byte
-	// Lire le fichier Go existant
-	if j.source == fileSourceStdin {
-		data = []byte{}
-	} else {
-		data, err = ioutil.ReadFile(j.fileDir + "/" + currentFileName)
-		if err != nil {
-			return nil, fmt.Errorf(j.t("error reading file")+" %s: %v", j.fileDir+"/"+currentFileName, err)
-		}
+	if currentFileName == j.currentSourceFileName {
+		data = j.currentSrcSource
+	} else if currentFileName == j.currentTestFileName {
+		data = j.currentSrcTest
 	}
 
 	// Extraire les imports existants dans le fichier
@@ -64,15 +131,6 @@ func (j *job) stepFixCode(currentFileName, openAIResponse string) ([]byte, error
 		return nil, fmt.Errorf(j.t("error parsing file")+": %v", err)
 	}
 
-	// Préparer un buffer pour le fichier modifié
-	var modifiedFile bytes.Buffer
-
-	// Récupérer et réutiliser le package existant
-	packageDecl := node.Name
-
-	// Ajouter la déclaration du package au fichier modifié
-	fmt.Fprintf(&modifiedFile, "package %s", packageDecl.Name)
-	modifiedFile.WriteString("\n\n")
 	// Mettre à jour les imports dans le fichier
 	// Recréer la section d'import avec les nouveaux imports
 	importDecl := &ast.GenDecl{
@@ -94,8 +152,6 @@ func (j *job) stepFixCode(currentFileName, openAIResponse string) ([]byte, error
 		// Si node.Decls est vide, ajoutez importDecl en tant que première déclaration
 		node.Decls = append(node.Decls, importDecl)
 	}
-
-	modifiedFile.WriteString("\n\n")
 
 	interfaces, err := j.extractInterfacesFromCode(openAIResponse)
 	if err != nil {
@@ -181,8 +237,6 @@ func (j *job) stepFixCode(currentFileName, openAIResponse string) ([]byte, error
 		}
 	}
 
-	modifiedFile.WriteString("\n\n")
-
 	vars, err := j.extractVarsFromCode(openAIResponse)
 	if err != nil {
 		return nil, fmt.Errorf(j.t("error extracting variables")+": %v", err)
@@ -226,8 +280,6 @@ func (j *job) stepFixCode(currentFileName, openAIResponse string) ([]byte, error
 			node.Decls = append(node.Decls, genVar)
 		}
 	}
-
-	modifiedFile.WriteString("\n\n")
 
 	structs, err := j.extractStructsFromCode(openAIResponse)
 	if err != nil {
@@ -306,9 +358,19 @@ func (j *job) stepFixCode(currentFileName, openAIResponse string) ([]byte, error
 		}
 	}
 
-	// Ajouter toutes les déclarations modifiées au fichier modifié.
+	return j.nodeToBytes(fs, node)
+}
+
+func (j *job) nodeToBytes(fs *token.FileSet, node *ast.File) ([]byte, error) {
+	var modifiedFile bytes.Buffer
+
+	// Écrire le package
+	fmt.Fprintf(&modifiedFile, "package %s", node.Name.Name)
+	modifiedFile.WriteString("\n\n")
+
+	// Écrire les déclarations
 	for _, decl := range node.Decls {
-		if err = printer.Fprint(&modifiedFile, fs, decl); err != nil {
+		if err := printer.Fprint(&modifiedFile, fs, decl); err != nil {
 			return nil, fmt.Errorf(j.t("error writing modified declaration")+": %v", err)
 		}
 		modifiedFile.WriteString("\n\n")
@@ -320,12 +382,21 @@ func (j *job) stepFixCode(currentFileName, openAIResponse string) ([]byte, error
 		return nil, fmt.Errorf(j.t("error while formatting file")+": %v", err)
 	}
 
-	// Sauvegarder le fichier modifié
 	return formattedCode, nil
 }
 
 // writeFile écrit le contenu du fichier modifié dans le fichier d'origine, stdout ou un fichier de destination.
-func (j *job) writeFile(currentFileName string, src, res []byte) error {
+func (j *job) writeFile(currentFileName string, res []byte) error {
+
+	var src []byte
+	if currentFileName == j.currentSourceFileName {
+		src = j.currentSrcSource
+		j.currentSrcSource = res
+	} else if currentFileName == j.currentTestFileName {
+		src = j.currentSrcTest
+		j.currentSrcTest = res
+	}
+
 	out := os.Stdout
 	if !bytes.Equal(src, res) {
 		if j.args.listOnly {
@@ -365,12 +436,12 @@ func (j *job) writeFile(currentFileName string, src, res []byte) error {
 // createNewTestFile crée un nouveau fichier s'il n'existe pas déjà.
 func (j *job) createNewTestFile() ([]byte, error) {
 	// Construit le chemin complet du fichier.
-	fullPath := filepath.Join(j.fileDir, j.currentFileName)
+	fullPath := filepath.Join(j.fileDir, j.currentTestFileName)
 
 	// Vérifie si le fichier existe déjà.
 	if _, err := os.Stat(fullPath); err == nil {
 		fmt.Println(j.t("The file already exists"), fullPath)
-		return j.readFileContent()
+		return j.readFileContent(j.currentTestFileName)
 
 	} else if !os.IsNotExist(err) {
 		return nil, fmt.Errorf(j.t("error when checking for existence of file")+": %v", err)
@@ -390,7 +461,7 @@ func (j *job) createNewTestFile() ([]byte, error) {
 		return nil, fmt.Errorf(j.t("error writing file")+": %v", err)
 	}
 
-	return j.readFileContent()
+	return j.readFileContent(j.currentTestFileName)
 }
 
 // setupGoMod initialise le module Go si le fichier go.mod n'existe pas.

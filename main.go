@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,6 +18,12 @@ type appArgs struct {
 	listOnly bool
 	write    bool
 	diffOnly bool
+}
+
+func init() {
+	// Configurer le logger pour inclure la date, l'heure, et les informations sur le fichier/ligne
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	log.SetOutput(os.Stdout)
 }
 
 func main() {

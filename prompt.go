@@ -17,6 +17,7 @@ var (
 	blue    func(a ...interface{}) string
 	green   func(a ...interface{}) string
 	magenta func(a ...interface{}) string
+	red     func(a ...interface{}) string
 )
 
 // init initialise la fonction blue pour afficher du texte en bleu.
@@ -24,6 +25,7 @@ func init() {
 	blue = color.New(color.FgBlue).SprintFunc()
 	green = color.New(color.FgGreen).SprintFunc()
 	magenta = color.New(color.FgMagenta).SprintFunc()
+	red = color.New(color.FgRed).SprintFunc()
 }
 
 // prepareGoPrompt ajoute le contexte pour spécifier que la question porte sur du code Go.

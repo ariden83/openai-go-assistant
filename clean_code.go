@@ -8,7 +8,7 @@ import (
 	"regexp"
 )
 
-// Met en commentaire les fonctions inutilisées dans le fichier
+// commentUnusedFunctions ajoute des commentaires aux fonctions non utilisées.
 func (j *job) commentUnusedFunctions(funcs []string) error {
 	// Lire le fichier ligne par ligne
 	content, err := os.ReadFile(j.fileDir + "/" + j.currentFileName)
@@ -62,6 +62,7 @@ func (j *job) commentUnusedFunctions(funcs []string) error {
 	return os.WriteFile(j.fileDir+"/"+j.currentFileName, bytes.Join(updatedLines, []byte("\n")), 0644)
 }
 
+// fixImports exécute goimports pour corriger les importations dans le fichier.
 func (j *job) fixImports() error {
 	// Commande pour exécuter goimports
 	cmd := exec.Command("goimports", "-w", j.currentFileName)
@@ -79,6 +80,7 @@ func (j *job) fixImports() error {
 	return nil
 }
 
+// findUnusedFunctions utilise staticcheck pour trouver les fonctions non utilisées dans le fichier.
 func (j *job) findUnusedFunctions() ([]string, error) {
 	fmt.Println(fmt.Sprintf(j.t("Analysis of")+" : %s", j.fileDir+"/"+j.currentFileName))
 
