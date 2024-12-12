@@ -7,41 +7,70 @@ import (
 	"os/exec"
 	"regexp"
 
+	log "github.com/sirupsen/logrus"
+
 	"github.com/ariden/goia/secret"
 )
+
+// Conversation represents a conversation with the OpenAI API.
+type Conversation struct {
+	Messages    []map[string]string `json:"messages"`             // Historique des messages
+	Model       string              `json:"model"`                // Modèle utilisé pour la conversation
+	Temperature float32             `json:"temperature"`          // Paramètre de température utilisé pour la conversation
+	MaxTokens   int                 `json:"max_tokens,omitempty"` // Nombre maximum de tokens à générer
+	N           int                 `json:"n,omitempty"`          // The number of responses to generate.
+}
 
 type job struct {
 	args                  *appArgs
 	cache                 *ConfigCache
 	fileDir               string
+	fileDirSelected       string
 	fileName              string
 	fileWithVendor        bool
+	conversation          Conversation
+	listFiles             []string
+	currentFileDir        string
 	currentFileName       string
 	currentSourceFileName string
 	currentTestFileName   string
 	currentStep           step
 	currentSrcSource      []byte
 	currentSrcTest        []byte
+	repoStructure         string
 	lang                  string
 	listFunctionsCreated  []string
 	listFunctionsUpdated  []string
 	maxAttempts           int
 	mockOpenAIResponse    bool
+	modulePath            string
 	openAIApiKey          secret.String
-	openAIModel           string
 	openAIURL             string
-	openAITemperature     float64
 	openAIMaxTokens       int
 	trad                  Translations
 	source                fileSource
 }
 
-// newJob crée un nouveau job.
+// newJob create a new job.
 func newJob(cache *ConfigCache, fileDir string, args *appArgs) (*job, error) {
 	j := job{
-		cache:                 cache,
-		fileDir:               fileDir,
-		fileName:              "main.go",
+		cache:    cache,
+		fileDir:  fileDir,
+		fileName: "main.go",
+		conversation: Conversation{
+			// L'ID en soi n'a pas de signification pour l'API OpenAI (l'API ne comprend pas les IDs comme des sessions).
+			// Ce qui importe, c'est de maintenir et d'envoyer l'historique des messages dans le champ messages.
+			// Cependant, garder un ID constant côté client ou backend vous permet de :
+			// Associer un historique à une conversation spécifique :
+			// Vous pouvez identifier les messages pertinents pour une conversation donnée et les inclure dans chaque appel.
+			// Gérer plusieurs conversations : Si vous avez plusieurs utilisateurs ou sujets, un ID unique pour
+			// chaque conversation vous permet de distinguer et de gérer les différents contextes.
+			// Assurer la continuité : Tant que vous envoyez l’historique complet des messages pertinents, le modèle
+			// d’OpenAI peut répondre de manière contextuelle.
+			Model:       cache.rootConfig.OpenAIModel,
+			Temperature: cache.rootConfig.OpenAITemperature,
+			// MaxTokens:   cache.rootConfig.OpenAIMaxTokens, // limite la taille de la réponse.
+		},
 		currentStep:           stepDefault,
 		currentFileName:       "main.go",
 		currentSourceFileName: "main.go",
@@ -53,10 +82,7 @@ func newJob(cache *ConfigCache, fileDir string, args *appArgs) (*job, error) {
 		maxAttempts:           cache.rootConfig.MaxAttempts,
 		mockOpenAIResponse:    false,
 		openAIApiKey:          secret.String(cache.rootConfig.OpenAIKey),
-		openAIModel:           cache.rootConfig.OpenAIModel,
 		openAIURL:             cache.rootConfig.OpenAIURL,
-		openAITemperature:     cache.rootConfig.OpenAITemperature,
-		openAIMaxTokens:       cache.rootConfig.OpenAIMaxTokens,
 		lang:                  "en",
 		args:                  args,
 	}
@@ -64,32 +90,14 @@ func newJob(cache *ConfigCache, fileDir string, args *appArgs) (*job, error) {
 	return &j, nil
 }
 
-/*
-je voudrais avoir un handler qui reçoit un prompt et qui execute le code golang associé dans un fichier local et je voudrais pouvoir estimer et retourner le cout d'execution du code en question
-*/
-
-// run exécute le job.
+// run executes the job.
 func (j *job) run() error {
 	if err := j.updateCache(); err != nil {
 		return err
 	}
 
-	/*filesFound, err := j.loadFilesFromFolder()
-	if err != nil {
-		fmt.Println(j.t("No files found in the specified folder, a main.go file will be created"), err)
-		if err := j.promptNoFilesFoundCreateANewFile(); err != nil {
-			return
-		}
-	} else {
-		if err := j.promptSelectAFileOrCreateANewOne(filesFound); err != nil {
-			return
-		}
-	}*/
-
-	// Exécuter go mod init et go mod tidy
-	if err := j.setupGoMod(); err != nil {
-		fmt.Println(j.t("Error configuring Go modules"), err)
-		return err
+	if err := j.findReposAndSubRepos(); err != nil {
+		log.WithError(err).Error("Error finding repos and subrepos: %v", err)
 	}
 
 	prompt, err := j.promptForQuery()
@@ -105,6 +113,7 @@ func (j *job) run() error {
 	}
 
 	for _, stepEntry := range stepsOrder {
+
 		j.currentStep = stepEntry.ValidStep
 		j.currentFileName = j.fileName
 
@@ -114,27 +123,28 @@ func (j *job) run() error {
 
 			verifyPrompt := j.getPromptForVerifyPrompt(prompt)
 
-			fmt.Println(fmt.Sprintf("\nprompt: "+blue("%s")+"\n\n", verifyPrompt))
+			log.Infof("\nprompt: "+blue("%s")+"\n\n", verifyPrompt)
 
 			respContent, err := j.callIA(verifyPrompt)
 			if err != nil {
-				fmt.Println(j.t("Error checking prompt"), err)
+				log.WithError(err).Error(j.t("Error checking prompt"))
 				return err
 			}
 			if !j.responseToBool(respContent) {
-				fmt.Println(red(j.t("The question is not a request for Go code")))
-				// restart the job
+				log.Info(red(j.t("The question is not a request for Go code")))
 				return j.run()
 			}
 			continue
 
 		} else if j.currentStep == stepStart {
+
 			fileContent := string(j.currentSrcSource)
 			if len(fileContent) > 50 {
 				prompt += ".\n\n" + j.t("Here is the Golang code") + " :\n\n" + fileContent
 			}
 
 		} else if j.currentStep == stepAddTest {
+
 			fileContent := string(j.currentSrcTest)
 			if err != nil {
 				fmt.Println(j.t("Error retrieving the name of the contents of the current file"), err)
@@ -150,15 +160,16 @@ func (j *job) run() error {
 
 		} else if j.currentStep == stepStartTest {
 
-			prompt += ".\n\n" + j.t("Determines whether the problem is in the test file or the source file. Generates a concise response that specifies the file to modify in the form: \"MODIFY: <function or section name> (source file, not test file)\" or \"MODIFY: <function or section name> (test file)\"") + "." +
-				j.t("Then provide the corrected code in the form: \"CODE: <corrected code>\"") + ".\n\n"
+			prompt += ".\n\n" + j.t("Determines whether the problem is in the test file or the source file. Generates a concise response that specifies the file to modify in the form") +
+				": \"MODIFY: <function or section name> (source <folder/filename.go>, not test file)\" or \"MODIFY: <function or section name> (test file)\"." +
+				j.t("Then provide the corrected code in the form") + ": \"CODE: <corrected code>\".\n\n"
 
 			fileContent := string(j.currentSrcTest)
 			if len(fileContent) > 50 {
 				prompt += ".\n\n" + j.t("Here is the Golang code") + " :\n\n" + fileContent
 			}
 
-		} else { // exemple : stepOptimizeCode
+		} else {
 			prompt = j.t(stepEntry.Prompt)
 
 			fileContent := string(j.currentSrcSource) // ? a modifier ?
@@ -170,115 +181,118 @@ func (j *job) run() error {
 		}
 
 		for attempt := 1; attempt <= j.maxAttempts; attempt++ {
-
-			fmt.Println(fmt.Sprintf("\nprompt: "+blue("%s")+"\n\n", prompt))
+			log.Infof("\nprompt: "+blue("%s")+"\n\n", prompt)
 
 			code, err := j.callIA(prompt)
 			if err != nil {
-				fmt.Println(j.t("Error generating code"), err)
+				log.WithError(err).Error(j.t("Error generating code"))
 				return err
 			}
 
-			fmt.Println(fmt.Sprintf("API response:\n\n"+green("\"%s\"")+"\n\n", code))
+			log.Infof("API response:\n\n"+green("\"%s\"")+"\n\n", code)
 
-			fileToModify, code := j.splitFileNameAndCode(code)
-			fmt.Println(fmt.Sprintf(j.t("file to modify") + ": " + green(fileToModify) + "\n\n"))
+			var output string
+			if j.currentStep == stepStart {
 
-			codeModified, err := j.stepFixCode(fileToModify, code)
-			if err != nil {
-				fmt.Println(j.t("Error to get code modified"), err)
-				return err
-			}
+				filesAndCode := j.splitFilesAndCode(code)
 
-			if err := j.writeFile(fileToModify, codeModified); err != nil {
-				fmt.Println(j.t("Error updating file"), err)
-				return err
-			}
+				for file, codeReceived := range filesAndCode {
+					j.currentFileName = file
+					j.currentSourceFileName = file
+					j.fileName = file
 
-			if err = j.updateGoMod(); err != nil {
-				fmt.Println(j.t("Error configuring Go modules"), err)
-				return err
-			}
+					if err := j.createAndWriteFile(file); err != nil {
+						log.WithError(err).Error(j.t("Error updating file"))
+						return err
+					}
 
-			// Exécution de goimports pour corriger les imports manquants.
-			if err = j.fixImports(); err != nil {
-				fmt.Println(j.t("Error correcting imports"), err)
-				return err
-			}
+					log.Infof("API parsed response:\n\n"+green("\"%s\"")+"\n\n", codeReceived)
+					codeModified, err := j.stepFixCode(file, codeReceived)
+					if err != nil {
+						log.WithError(err).Error(j.t("Error to get code modified"))
+						return err
+					}
 
-			// Exécution du fichier Go.
-			output, err := j.runGolangFile()
-			if err != nil {
-				fmt.Println(fmt.Sprintf("------------------------------------ code result (failed): \n\n %s", output))
-				j.currentStep = stepEntry.ErrorStep
+					if err := j.writeFile(file, codeModified); err != nil {
+						log.WithError(err).Error(j.t("Error updating file"))
+						return err
+					}
+				}
 
-				unusedImports, err := j.extractUnusedImports(output)
+				// puis, pour chacun des fichiers on teste le code.
+				for file, codeReceived := range filesAndCode {
+					j.currentFileName = file
+					j.currentSourceFileName = file
+					j.fileName = file
+
+					testFileName, err := j.getTestFilename()
+					if err != nil {
+						return err
+					}
+					log.Infof("testFileName: %s", testFileName)
+					j.currentTestFileName = testFileName
+
+					for attempt := 1; attempt <= j.maxAttempts; attempt++ {
+						if attempt != 1 {
+							log.Infof("\nprompt: "+blue("%s")+"\n\n", prompt)
+
+							codeReceived, err = j.callIA(prompt)
+							if err != nil {
+								log.WithError(err).Error(j.t("Error generating code"))
+								return err
+							}
+
+							log.Infof("API response:\n\n"+green("\"%s\"")+"\n\n", codeReceived)
+
+							codeModified, err := j.stepFixCode(file, codeReceived)
+							if err != nil {
+								log.WithError(err).Error(j.t("Error to get code modified"))
+								return err
+							}
+
+							if err := j.writeFile(file, codeModified); err != nil {
+								log.WithError(err).Error(j.t("Error updating file"))
+								return err
+							}
+						}
+
+						var mustBreak, mustContinue bool
+						prompt, output, mustBreak, mustContinue, err = j.runContentForFile(stepEntry, file, codeReceived)
+						if err != nil {
+							return err
+						}
+						if mustBreak {
+							break
+						}
+						if mustContinue {
+							continue
+						}
+					}
+				}
+
+			} else {
+
+				fileToModify, codeReceived := j.splitFileNameAndCode(code)
+				log.Infof(j.t("file to modify") + ": " + green(fileToModify) + "\n\n")
+
+				var mustBreak, mustContinue bool
+				prompt, output, mustBreak, mustContinue, err = j.runContentForFile(stepEntry, fileToModify, codeReceived)
 				if err != nil {
-					fmt.Println(j.t("Error when extract unused imports")+":", err)
 					return err
 				}
-
-				if len(unusedImports) > 0 {
-					fmt.Println(fmt.Sprintf("------------------------------------ fix unused imports: \n\n%v", magenta(unusedImports)))
-					err = j.removeUnusedImports(unusedImports, j.currentSourceFileName)
-					if err != nil {
-						fmt.Println(j.t("Error deleting imports")+":", err)
-						return err
-					}
-					fmt.Println("------------------------------------ imports fixed")
-					output, err = j.runGolangFile()
+				if mustBreak {
+					break
 				}
-
-				if err != nil {
-					fmt.Println(fmt.Sprintf("------------------------------------ code result (failed): \n\n %s", output))
-
-					funcCode, err := j.extractErrorForPrompt(output)
-					if err != nil {
-						fmt.Println(j.t("Error when extract errors from prompt")+":", err)
-						return err
-					}
-					fmt.Println(j.t("Runtime error"), output)
-					// Mise à jour de l'instruction pour l'API en ajoutant le retour d'erreur.
-					prompt = j.t("Fix the following code that generated an error") + ":\n\n" + funcCode + "\n\n" +
-						j.t("Error") + " : " + output + "\n\n" +
-						j.t("responds without adding comments or explanations") + "\n\n" +
-						j.t("Generates a concise response that specifies the file to modify in the form: \"MODIFY: <function or section name> (source file, not test file)\"") + "." +
-						j.t("Then provide the corrected code in the form: \"CODE: <corrected code>\"") + "."
-
+				if mustContinue {
 					continue
 				}
+
+				log.Infof("------------------------------------ result (ok): \n\n %s", output)
+
+				fmt.Println(j.t("Code output")+": `", output, "`")
 			}
 
-			if j.isTestFile(j.currentFileName) {
-
-				output, err := j.runGolangTestFile()
-				if err != nil {
-					fmt.Println(fmt.Sprintf("------------------------------------ test result (failed): \n\n %s", output))
-					j.currentStep = stepEntry.ErrorStep
-
-					if j.currentStep == stepAddTestError {
-						prompt, err = j.stepAddTestErrorProcessPrompt(output)
-						if err != nil {
-							return err
-						}
-
-					} else {
-						funcCode, err := j.extractErrorForPrompt(output)
-						if err != nil {
-							fmt.Println("Erreur:", err)
-							return err
-						}
-						fmt.Println(j.t("Runtime error"), output)
-						// Mise à jour de l'instruction pour l'API en ajoutant le retour d'erreur
-						prompt = j.t("Fix the following code that generated an error") + ":\n\n" + funcCode + "\n\n" +
-							j.t("Error") + " : " + output + "\n\n" +
-							j.t("responds without adding comments or explanations")
-					}
-					continue
-				}
-			}
-
-			fmt.Println(fmt.Sprintf("------------------------------------ result (ok): \n\n %s", output))
+			log.Infof("------------------------------------ result (ok): \n\n %s", output)
 			/*unusedFuncs, err := j.findUnusedFunctions()
 			if err != nil {
 				fmt.Println("error lors de la recherche des fonctions inutilisées:", err)
@@ -289,23 +303,127 @@ func (j *job) run() error {
 				fmt.Println("error lors de la mise en commentaire des fonctions:", err)
 			}*/
 
-			fmt.Println(j.t("Code output")+": `", output, "`")
+			log.Info(j.t("Code output")+": `", output, "`")
 			break
 
 		}
 	}
-	fmt.Println(j.t("End of the job") + "\n\n" + j.t("Restarting the job ?"))
-	j.reinitJob()
+
+	log.Info(j.t("End of the job") + "\n\n" + j.t("Restarting the job ?"))
+	j.reinJob()
 	return j.run()
 }
 
-// reinitJob réinitialise le job.
-func (j *job) reinitJob() {
+func (j *job) runContentForFile(stepEntry StepWithError, fileToModify, code string) (prompt, output string, mustBreak, mustContinue bool, err error) {
+	var codeModified []byte
+	codeModified, err = j.stepFixCode(fileToModify, code)
+	if err != nil {
+		log.WithError(err).Error(j.t("Error to get code modified"))
+		return
+	}
+
+	if err = j.writeFile(fileToModify, codeModified); err != nil {
+		log.WithError(err).Error(j.t("Error updating file"))
+		return
+	}
+
+	if err = j.updateGoMod(); err != nil {
+		log.WithError(err).Error(j.t("Error configuring Go modules"))
+		return
+	}
+
+	// Exécution de goimports pour corriger les imports manquants.
+	if err = j.fixImports(); err != nil {
+		log.WithError(err).Error(j.t("Error correcting imports"))
+		return
+	}
+
+	// Exécution du fichier Go.
+	output, err = j.runGolangFile()
+	if err != nil {
+		log.Infof("------------------------------------ code result (failed): \n\n %s", output)
+		j.currentStep = stepEntry.ErrorStep
+
+		var unusedImports []string
+		unusedImports, err = j.extractUnusedImports(output)
+		if err != nil {
+			log.WithError(err).Error(j.t("Error when extract unused imports"))
+			return
+		}
+
+		if len(unusedImports) > 0 {
+			log.Infof("------------------------------------ fix unused imports: \n\n%v", magenta(unusedImports))
+			err = j.removeUnusedImports(unusedImports, j.currentSourceFileName)
+			if err != nil {
+				fmt.Println(j.t("Error deleting imports")+":", err)
+				return
+			}
+			log.Info("------------------------------------ imports fixed")
+			output, err = j.runGolangFile()
+		}
+
+		if err != nil {
+			log.Infof("------------------------------------ code result (failed): \n\n %s", output)
+
+			var funcCode string
+			funcCode, err = j.extractErrorForPrompt(output)
+			if err != nil {
+				log.WithError(err).Error(j.t("Error when extract errors from prompt"))
+				return
+			}
+			fmt.Println(j.t("Runtime error"), output)
+			// Mise à jour de l'instruction pour l'API en ajoutant le retour d'erreur.
+			prompt = j.t("Fix the following code that generated an error") + ":\n\n" + funcCode + "\n\n" +
+				j.t("Error") + " : " + output + "\n\n" +
+				j.t("responds without adding comments or explanations") + "\n\n" +
+				j.t("Generates a concise response that specifies the file to modify in the form: \"MODIFY: <function or section name> (source file, not test file)\"") + "." +
+				j.t("Then provide the corrected code in the form: \"CODE: <corrected code>\"") + "."
+
+			mustContinue = true
+			return
+		}
+	}
+
+	if j.isTestFile(j.currentFileName) {
+
+		output, err = j.runGolangTestFile()
+		if err != nil {
+			fmt.Println(fmt.Sprintf("------------------------------------ test result (failed): \n\n %s", output))
+			j.currentStep = stepEntry.ErrorStep
+
+			if j.currentStep == stepAddTestError {
+				prompt, err = j.stepAddTestErrorProcessPrompt(output)
+				if err != nil {
+					return
+				}
+
+			} else {
+				var funcCode string
+				funcCode, err = j.extractErrorForPrompt(output)
+				if err != nil {
+					fmt.Println("Erreur:", err)
+					return
+				}
+				fmt.Println(j.t("Runtime error"), output)
+				// Mise à jour de l'instruction pour l'API en ajoutant le retour d'erreur
+				prompt = j.t("Fix the following code that generated an error") + ":\n\n" + funcCode + "\n\n" +
+					j.t("Error") + " : " + output + "\n\n" +
+					j.t("responds without adding comments or explanations")
+			}
+			mustContinue = true
+			return
+		}
+	}
+	return
+}
+
+// reinJob resets the job values.
+func (j *job) reinJob() {
 	j.listFunctionsUpdated = []string{}
 	j.listFunctionsCreated = []string{}
 }
 
-// printTestsFuncName retourne les noms des fonctions à tester.
+// printTestsFuncName returns the names of the functions to test.
 func (j *job) printTestsFuncName() string {
 	var funcs string
 	j.listFunctionsCreated = removeDuplicates(j.listFunctionsCreated)
@@ -315,7 +433,7 @@ func (j *job) printTestsFuncName() string {
 	return funcs
 }
 
-// isCompleteFunction vérifie si la fonction est complète.
+// isCompleteFunction checks if the function is complete.
 func isCompleteFunction(funcDecl *ast.FuncDecl) bool {
 	// Utiliser un simple modèle pour vérifier si la fonction est complète
 	// Cela peut être ajusté selon le besoin
@@ -329,7 +447,7 @@ func isCompleteFunction(funcDecl *ast.FuncDecl) bool {
 	return false
 }
 
-// runGolangFile exécute le fichier Go.
+// runGolangFile executes the Go file.
 func (j *job) runGolangFile() (string, error) {
 	var cmd *exec.Cmd
 	// Sinon, utiliser "go build" pour vérifier la compilation
@@ -354,33 +472,27 @@ func (j *job) runGolangFile() (string, error) {
 		// Supprimer le binaire temporaire généré par "go build"
 		removeCmd := exec.Command("rm", "temp_binary")
 		removeCmd.Dir = j.fileDir
-		removeCmd.Run() // Ignorer les erreurs de suppression
+		removeCmd.Run()
 	}
 
-	// Retourner la sortie de la commande et l'erreur éventuelle
 	return out.String(), err
 }
 
-// runGolangTestFile exécute le fichier de test Go.
+// runGolangTestFile runs the Go test file.
 func (j *job) runGolangTestFile() (string, error) {
-	// Vérifier si le fichier est un fichier de test
 	if j.currentTestFileName == "" {
 		return "", nil
 	}
 
 	cmd := exec.Command("go", "test", "./...")
 
-	// Spécifier le répertoire contenant le fichier et le go.mod
 	cmd.Dir = j.fileDir
 
-	// Préparer le buffer pour capturer la sortie
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
 
-	// Exécuter la commande
 	err := cmd.Run()
 
-	// Retourner la sortie de la commande et l'erreur éventuelle
 	return out.String(), err
 }

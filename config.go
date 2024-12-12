@@ -28,13 +28,14 @@ type Config struct {
 	// All comments with these prefixes will be separated from each other.
 	Prefixes []string `yaml:"prefixes"`
 
-	MaxAttempts       int     `yaml:"max_attempts"`
-	Lang              string  `yaml:"language"`
-	OpenAIKey         string  `yaml:"openai_api_key"`
-	OpenAIMaxTokens   int     `yaml:"openai_max_tokens"`
-	OpenAIModel       string  `yaml:"openai_model"`
-	OpenAITemperature float64 `yaml:"openai_temperature"`
-	OpenAIURL         string  `yaml:"openai_url"`
+	MaxAttempts       int      `yaml:"max_attempts"`
+	Lang              string   `yaml:"language"`
+	OpenAIKey         string   `yaml:"openai_api_key"`
+	OpenAIMaxTokens   int      `yaml:"openai_max_tokens"`
+	OpenAIModel       string   `yaml:"openai_model"`
+	OpenAITemperature float32  `yaml:"openai_temperature"`
+	OpenAIURL         string   `yaml:"openai_url"`
+	OpenAITags        []string `yaml:"openai_tags"`
 }
 
 // ConfigCache is a cache to contains the configuration for all processed files.
@@ -65,14 +66,16 @@ func (j *job) updateCache() error {
 		return err
 	}
 
-	j.openAITemperature = cfg.OpenAITemperature
-	j.openAIURL = cfg.OpenAIURL
-	j.openAIModel = cfg.OpenAIModel
 	if cfg.Lang != "" {
 		j.lang = cfg.Lang
 	}
+	j.conversation.Temperature = cfg.OpenAITemperature
+	j.conversation.Model = cfg.OpenAIModel
+	// j.conversation.MaxTokens = cfg.OpenAIMaxTokens
+
+	j.openAIURL = cfg.OpenAIURL
 	j.openAIApiKey = secret.String(cfg.OpenAIKey)
-	j.openAIMaxTokens = cfg.OpenAIMaxTokens
+
 	j.maxAttempts = cfg.MaxAttempts
 
 	if err := j.loadTranslations(); err != nil {

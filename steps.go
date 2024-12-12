@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// step est une étape de l'assistant.
+// step is a wizard step.
 type step string
 
 const (
@@ -25,14 +25,14 @@ const (
 	stepAddTestError step = "addTestsError"
 )
 
-// StepWithError est une étape avec une étape d'erreur associée.
+// StepWithError is a step with an associated error step.
 type StepWithError struct {
 	ValidStep step
 	ErrorStep step
 	Prompt    string
 }
 
-// stepsOrderDefault est une liste ordonnée des étapes pour les fichiers par défaut.
+// stepsOrderDefault is an ordered list of steps for default files.
 var stepsOrderDefault = []StepWithError{
 	{ValidStep: stepVerifyGoPrompt},
 	{ValidStep: stepStart, ErrorStep: stepStartError},
@@ -40,19 +40,19 @@ var stepsOrderDefault = []StepWithError{
 	{ValidStep: stepAddTest, ErrorStep: stepAddTestError},
 }
 
-// stepsOrderTest est une liste ordonnée des étapes pour les fichiers de test.
+// stepsOrderTest is an ordered list of steps for test files.
 var stepsOrderTest = []StepWithError{
 	//{ValidStep: stepVerifyTestPrompt},
 	{ValidStep: stepStartTest, ErrorStep: stepAddTestError},
 }
 
-// stepsOrderSwagger est une liste ordonnée des étapes pour les fichiers swagger.
+// stepsOrderSwagger is an ordered list of steps for swagger files.
 var stepsOrderSwagger = []StepWithError{
 	{ValidStep: stepVerifySwaggerPrompt},
 	{ValidStep: stepStart, ErrorStep: stepStartError},
 }
 
-// getStepFromFileName retourne les étapes à suivre en fonction du nom du fichier.
+// getStepFromFileName return the steps to follow based on the file name.
 func (j *job) getStepFromFileName() ([]StepWithError, error) {
 	stepChoose := stepsOrderDefault
 	switch {
@@ -94,7 +94,7 @@ func (j *job) getStepFromFileName() ([]StepWithError, error) {
 	return stepChoose, nil
 }
 
-// getPromptForVerifyPrompt retourne un prompt pour vérifier si la question est une demande de code Go.
+// getPromptForVerifyPrompt returns a prompt to check if the question is a Go code request.
 func (j *job) getPromptForVerifyPrompt(prompt string) string {
 	switch j.currentStep {
 	case stepVerifyTestPrompt:
@@ -106,7 +106,7 @@ func (j *job) getPromptForVerifyPrompt(prompt string) string {
 	}
 }
 
-// stepAddTestErrorProcessPrompt ajoute un prompt pour traiter les erreurs lors de l'ajout de tests.
+// stepAddTestErrorProcessPrompt adds a prompt to handle errors when adding tests.
 func (j *job) stepAddTestErrorProcessPrompt(output string) (string, error) {
 	getFailedTests, err := j.getFailedTests(output)
 	if err != nil {

@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+
+	logger "github.com/sirupsen/logrus"
 )
 
 type appArgs struct {
@@ -35,6 +37,7 @@ func main() {
 	}
 }
 
+// run executes the program.
 func run() error {
 	var args appArgs
 
@@ -56,6 +59,7 @@ func run() error {
 	return process(&args, flag.Args()...)
 }
 
+// process processes the specified files or STDIN.
 func process(args *appArgs, paths ...string) error {
 	cache := NewConfigCache(args.local, args.prefixes)
 
@@ -73,19 +77,18 @@ func process(args *appArgs, paths ...string) error {
 	for _, path := range paths {
 		info, err := os.Stat(path)
 		if err != nil {
-			return fmt.Errorf("erreur lors de l'accès au chemin %s : %w", path, err)
+			return fmt.Errorf(j.t("error accessing path")+" %s : %w", path, err)
 		}
 
 		if info.IsDir() {
-			// L'utilisateur a sélectionné un répertoire
-			fmt.Printf("traitement du répertoire : %s\n", path)
+			logger.Printf(j.t("directory processing")+" : %s\n", path)
 			j.fileDir = path
 			if err := j.processFileFromFolder(); err != nil {
 				return err
 			}
+
 		} else {
-			// L'utilisateur a sélectionné un fichier
-			fmt.Printf("Traitement du fichier : %s\n", path)
+			logger.Printf(j.t("Processing the file")+" : %s\n", path)
 			j.source = fileSourceFilePath
 			if err := j.run(); err != nil {
 				return err
@@ -96,10 +99,11 @@ func process(args *appArgs, paths ...string) error {
 	return nil
 }
 
+// processFileFromFolder processes a file from a folder.
 func (j *job) processFileFromFolder() error {
 	filesFound, err := j.loadFilesFromFolder()
 	if err != nil {
-		fmt.Println(j.t("No files found in the specified folder, create a new one"), err)
+		logger.Println(j.t("No files found in the specified folder, create a new one"), err)
 		if err := j.promptNoFilesFoundCreateANewFile(); err != nil {
 			return err
 		}
@@ -116,6 +120,7 @@ func (j *job) processFileFromFolder() error {
 	return nil
 }
 
+// diff returns the difference between two files.
 func diff(b1, b2 []byte, filename string) ([]byte, error) {
 	f1, err := writeTempFile("", "goia", b1)
 	if err != nil {
@@ -136,12 +141,16 @@ func diff(b1, b2 []byte, filename string) ([]byte, error) {
 	}()
 
 	data, err := exec.Command("diff", "-u", f1, f2).CombinedOutput()
+	if err != nil {
+		return nil, err
+	}
 	if len(data) >= 0 {
 		data, err = replaceTempFilename(data, filename)
 	}
 	return data, err
 }
 
+// writeTempFile writes data to a temporary file.
 func writeTempFile(dir string, prefix string, data []byte) (string, error) {
 	f, err := os.CreateTemp(dir, prefix)
 	if err != nil {

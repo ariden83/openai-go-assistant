@@ -19,13 +19,12 @@ func (j *job) callIA(prompt string) (string, error) {
 		return "", fmt.Errorf(j.t("empty prompt"))
 	}
 
-	requestBody := map[string]interface{}{
-		"model": j.openAIModel,
-		"messages": []map[string]string{
-			{"role": "user", "content": prompt},
-		},
-		"temperature": j.openAITemperature,
-	}
+	j.conversation.Messages = append(j.conversation.Messages, j.archiPrompt())
+	// on peut ajouter un historique des messages à envoyer en gardant l'historique des messages précédents,
+	// mais ça va augmenter le cout de facturation car ça va envoyer plus de tokens à OpenAI.
+	j.conversation.Messages = append(j.conversation.Messages, map[string]string{"role": "user", "content": prompt})
+
+	requestBody := j.conversation
 
 	jsonData, err := json.Marshal(requestBody)
 	if err != nil {
@@ -49,7 +48,11 @@ func (j *job) callIA(prompt string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			fmt.Println(err)
+		}
+	}()
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
@@ -68,6 +71,9 @@ func (j *job) callIA(prompt string) (string, error) {
 	if response.Error != nil {
 		return "", fmt.Errorf("%s: %s", response.Error.Code, response.Error.Message)
 	}
+
+	// on efface l'historique des messages à envoyer pour diminuer le cout de facturation d'open AI
+	j.conversation.Messages = []map[string]string{}
 
 	if len(response.Choices) > 0 {
 		// fmt.Println(fmt.Sprintf("openAI response details : %+v", response.Choices[0].Message.Content))

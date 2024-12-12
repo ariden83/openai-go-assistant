@@ -13,7 +13,7 @@ import (
 	"strings"
 )
 
-// getSourceFileName renvoie le nom du fichier source à partir du nom du fichier de test.
+// getSourceFileName returns the source file name from the test file name.
 func (j *job) getSourceFileName(testFileName string) string {
 	if strings.HasSuffix(testFileName, "_test.go") {
 		return strings.TrimSuffix(testFileName, "_test.go") + ".go"
@@ -21,12 +21,29 @@ func (j *job) getSourceFileName(testFileName string) string {
 	return testFileName
 }
 
-// isTestFile vérifie si un fichier est un fichier de test.
+// isTestFile checks if a file is a test file.
 func (j *job) isTestFile(testFileName string) bool {
 	return strings.HasSuffix(testFileName, "_test.go")
 }
 
-// splitFileNameAndCode sépare le nom du fichier et le code d'une réponse.
+var regFindNameAndCode = regexp.MustCompile("\\*\\*(.*?)\\*\\*\\s```go\\s*(?s)(.*?)\\s*```")
+
+func (j *job) splitFilesAndCode(response string) map[string]string {
+	var filesNameAndCode = map[string]string{}
+
+	matches := regFindNameAndCode.FindAllStringSubmatch(response, -1)
+
+	for _, match := range matches {
+		if match[1] == "main.go" {
+			filesNameAndCode[j.currentFileName] = match[2]
+		} else {
+			filesNameAndCode[match[1]] = match[2]
+		}
+	}
+	return filesNameAndCode
+}
+
+// splitFileNameAndCode separates the file name and the code of a response.
 func (j *job) splitFileNameAndCode(response string) (fileName string, code string) {
 	parts := strings.SplitN(response, "CODE:", 2)
 	if len(parts) != 2 {
@@ -47,7 +64,7 @@ func (j *job) splitFileNameAndCode(response string) (fileName string, code strin
 	return j.currentFileName, code
 }
 
-// extractBackticks extrait le code Go d'une chaîne entourée de backticks.
+// extractBackticks extracts Go code from a string surrounded by backticks.
 func (j *job) extractBackticks(code string) string {
 	// Si la chaîne commence et se termine par des backticks, on les supprime.
 	if strings.HasPrefix(code, "```go") && strings.HasSuffix(code, "```") {
@@ -62,7 +79,7 @@ func (j *job) extractBackticks(code string) string {
 	return code
 }
 
-// extractFunctionsFromCode extrait les déclarations de fonction d'un code Go sous forme de chaîne.
+// extractFunctionsFromCode extracts function declarations from Go code as a string.
 func (j *job) extractFunctionsFromCode(code string) ([]*ast.FuncDecl, error) {
 
 	if !strings.HasPrefix(code, "package") {
@@ -86,7 +103,7 @@ func (j *job) extractFunctionsFromCode(code string) ([]*ast.FuncDecl, error) {
 	return funcs, nil
 }
 
-// extractStructsFromCode extrait les déclarations de struct d'un code Go sous forme de chaîne.
+// extractStructsFromCode extracts struct declarations from Go code as a string.
 func (j *job) extractStructsFromCode(code string) ([]*ast.TypeSpec, error) {
 
 	if !strings.HasPrefix(code, "package") {
@@ -117,7 +134,7 @@ func (j *job) extractStructsFromCode(code string) ([]*ast.TypeSpec, error) {
 	return structs, nil
 }
 
-// extractInterfacesFromCode extrait les déclarations d'interface d'un code Go sous forme de chaîne.
+// extractInterfacesFromCode extracts interface declarations from Go code as a string.
 func (j *job) extractInterfacesFromCode(code string) ([]*ast.TypeSpec, error) {
 	if !strings.HasPrefix(code, "package") {
 		// Ajouter "package main" au début du code
@@ -127,7 +144,7 @@ func (j *job) extractInterfacesFromCode(code string) ([]*ast.TypeSpec, error) {
 	fs := token.NewFileSet()
 	node, err := parser.ParseFile(fs, "", code, parser.ParseComments)
 	if err != nil {
-		return nil, fmt.Errorf(j.t("error parsing interfaces from code")+": %v", err)
+		return nil, fmt.Errorf(j.t("error parsing interfaces from code : ")+red(code)+": %v", err)
 	}
 
 	var interfaces []*ast.TypeSpec
@@ -147,7 +164,7 @@ func (j *job) extractInterfacesFromCode(code string) ([]*ast.TypeSpec, error) {
 	return interfaces, nil
 }
 
-// extractConstsFromCode extrait les déclarations de const d'un code Go sous forme de chaîne.
+// extractConstsFromCode extracts const declarations from Go code as a string.
 func (j *job) extractConstsFromCode(code string) ([]*ast.GenDecl, error) {
 
 	if !strings.HasPrefix(code, "package") {
@@ -171,7 +188,7 @@ func (j *job) extractConstsFromCode(code string) ([]*ast.GenDecl, error) {
 	return consts, nil
 }
 
-// extractVarsFromCode extrait les déclarations de var d'un code Go sous forme de chaîne.
+// extractVarsFromCode extracts var declarations from Go code as a string.
 func (j *job) extractVarsFromCode(code string) ([]*ast.GenDecl, error) {
 	if !strings.HasPrefix(code, "package") {
 		// Ajouter "package main" au début du code
@@ -194,7 +211,7 @@ func (j *job) extractVarsFromCode(code string) ([]*ast.GenDecl, error) {
 	return vars, nil
 }
 
-// extractImportsFromCode extrait les déclarations d'import d'un code Go sous forme de chaîne.
+// extractImportsFromCode extracts import statements from a Go code as a string.
 func (j *job) extractImportsFromCode(fromFile, code string) ([]string, error) {
 	if !strings.HasPrefix(code, "package") {
 		// Ajouter "package main" au début du code
@@ -216,7 +233,7 @@ func (j *job) extractImportsFromCode(fromFile, code string) ([]string, error) {
 	return imports, nil
 }
 
-// extractLineNumber extrait le numéro de ligne d'un message d'erreur.
+// extractLineNumber extracts the line number from an error message.
 func (j *job) extractLineNumber(errorMessage string) (int, error) {
 	// Expression régulière pour capturer le numéro de ligne
 	re := regexp.MustCompile(`:(\d+):\d+`)
@@ -236,9 +253,8 @@ func (j *job) extractLineNumber(errorMessage string) (int, error) {
 	return lineNumber, nil
 }
 
-// extractFunctionFromLine extrait le code d'une fonction à partir du numéro de ligne.
+// extractFunctionFromLine extracts the code of a function from the line number.
 func (j *job) extractFunctionFromLine(lineNumber int) (string, error) {
-	// Lire le fichier Go
 	data, err := ioutil.ReadFile(j.fileDir + "/" + j.currentSourceFileName)
 	if err != nil {
 		return "", fmt.Errorf(j.t("error reading file")+": %v", err)
@@ -288,7 +304,7 @@ func (j *job) extractFunctionFromLine(lineNumber int) (string, error) {
 	return surroundingCode.String(), nil
 }
 
-// extractUnusedImports extrait les imports inutilisés d'un message d'erreur.
+// extractUnusedImports extracts unused imports from an error message.
 func (j *job) extractUnusedImports(errorMessage string) ([]string, error) {
 	// Regex pour trouver les imports inutilisés dans les erreurs
 	re := regexp.MustCompile(`\./.*:\d+:\d+: "([^"]+)" imported and not used`)
@@ -309,7 +325,7 @@ func (j *job) extractUnusedImports(errorMessage string) ([]string, error) {
 	return unusedImports, nil
 }
 
-// extractErrorForPrompt extrait le code de la fonction contenant l'erreur pour afficher dans le prompt.
+// extractErrorForPrompt extracts the code from the function containing the error to display in the prompt.
 func (j *job) extractErrorForPrompt(output string) (string, error) {
 	errorLine, err := j.extractLineNumber(output)
 	if err != nil {
@@ -323,7 +339,7 @@ func (j *job) extractErrorForPrompt(output string) (string, error) {
 	return funcCode, nil
 }
 
-// ReadFileContent lit le contenu d'un fichier et le retourne sous forme de chaîne de caractères.
+// ReadFileContent reads the contents of a file and returns it as a string.
 func (j *job) readFileContent(file string) ([]byte, error) {
 	if j.source == fileSourceStdin {
 		return []byte{}, nil
@@ -337,7 +353,7 @@ func (j *job) readFileContent(file string) ([]byte, error) {
 	return data, nil
 }
 
-// extractFunctionDetails extrait les détails d'une fonction à partir de sa déclaration.
+// extractFunctionDetails extracts the details of a function from its declaration.
 func extractFunctionDetails(funcDecl *ast.FuncDecl) string {
 	var builder strings.Builder
 	builder.WriteString("func ")
@@ -385,7 +401,7 @@ func extractFunctionDetails(funcDecl *ast.FuncDecl) string {
 	return builder.String()
 }
 
-// exprToString Fonction utilitaire pour convertir une expression en chaîne
+// exprToString Utility function to convert expression to string.
 func exprToString(expr ast.Expr) string {
 	switch t := expr.(type) {
 	case *ast.Ident:

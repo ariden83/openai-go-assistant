@@ -57,113 +57,141 @@ func (j *job) mockOpenAI(response *APIResponse) {
 }
 
 func (j *job) mockOpenAIStepStart() string {
-	return `package main
+	return `**model/pickup_point.go**
+` + "```go" + `
+	package model
 
-import (
-	"encoding/json"
+	type PickupPoint struct {
+		ID   int    ` + "`json:\"id\"`" + `
+		Name string ` + "`json:\"name\"`" + `
+		Location string ` + "`json:\"location\"`" + `
+	}` +
+		"	```" + `		
+
+**adapter/db.go**
+` +
+		"```go" + `	
+package adapter
+
+	import (
+		"database/sql"
 	"fmt"
+	_ "github.com/lib/pq"
+	"context"
 	"log"
-)
+	"model"
+	)
 
-var data = []byte(` + "`" + `{"hello":"world","answer":42}` + "`" + `)
-
-const (
-	stepStart     = iota
-	stepStartError
-	stepOptimize
-	stepAddTest
-	stepAddTestError	
-)
-
-type Abser interface {}
-
-// Définition des structures correspondant au JSON de réponse valide
-type Choice struct {
-	Index        int    ` + "`" + `json:"index"` + "`" + `
-	Message      Message ` + "`" + `json:"message"` + "`" + `
-	FinishReason string ` + "`" + `json:"finish_reason"` + "`" + `
-}
-
-type Message struct {
-	Role    string ` + "`" + `json:"role"` + "`" + `
-	Content string ` + "`" + `json:"content"` + "`" + `
-}
-
-type Usage struct {
-	PromptTokens     int ` + "`" + `json:"prompt_tokens"` + "`" + `
-	CompletionTokens int ` + "`" + `json:"completion_tokens"` + "`" + `
-	TotalTokens      int ` + "`" + `json:"total_tokens"` + "`" + `
-}
-
-type APIResponse struct {
-	ID      string   ` + "`" + `json:"id"` + "`" + `
-	Object  string   ` + "`" + `json:"object"` + "`" + `
-	Created int64    ` + "`" + `json:"created"` + "`" + `
-	Model   string   ` + "`" + `json:"model"` + "`" + `
-	Choices []Choice ` + "`" + `json:"choices"` + "`" + `
-	Usage   Usage    ` + "`" + `json:"usage"` + "`" + `
-}
-
-func main() {
-	if err := godotenv.Load(); err != nil {
-		fmt.Println("Erreur de chargement du fichier .env")
+	type DBAdapter struct {
+		db *sql.DB
 	}
 
-	// Exemple de JSON de réponse valide
-	responseJSON := ` + "`" + `
-			{
-				"id": "chatcmpl-12345",
-				"object": "chat.completion",
-				"created": 1689200300,
-				"model": "gpt-3.5-turbo",
-				"choices": [
-			{
-				"index": 0,
-				"message": {
-				"role": "assistant",
-				"content": "This is a test response from the assistant."
-			},
-				"finish_reason": "stop"
-			}
-			],
-				"usage": {
-				"prompt_tokens": 10,
-				"completion_tokens": 20,
-				"total_tokens": 30
-			}
-			}` + "`" + `
-
-	// Parse le JSON de réponse
-	var apiResponse APIResponse
-	err := json.Unmarshal([]byte(responseJSON), &apiResponse)
-	if err != nil {
-		log.Fatalf("Erreur lors du parsing de la réponse JSON: %v", err)
+	func NewDBAdapter(dataSourceName string) *DBAdapter {
+		db, err := sql.Open("postgres", dataSourceName)
+		if err != nil {
+		log.Fatal(err)
+	}
+		return &DBAdapter{db: db}
 	}
 
-	data := bytes.NewBufferString(` + "`" + `{"hello":"world","answer":42}` + "`" + `)
-	req, _ := http.NewRequest("PUT", "http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu", data)
-	req.Header.Set("Content-Type", "application/json")
+	func (adapter *DBAdapter) GetPickupPointByID(ctx context.Context, id int) (*model.PickupPoint, error) {
+		query := ` + "`SELECT id, name, location FROM pickup_points WHERE id=$1`" + `
+		row := adapter.db.QueryRowContext(ctx, query, id)
+		var p model.PickupPoint
+		if err := row.Scan(&p.ID, &p.Name, &p.Location); err != nil {
+			return nil, fmt.Errorf("error getting pickup point: %v", err)
+		}
+		return &p, nil
+	}` +
+		"	```" + `
 
-	command, _ := http2curl.GetCurlCommand(req)
-	fmt.Println(command)
+**usecase/pickup_point.go**` +
+		"```go" + `	
+package usecase
 
-	// Affichage des informations extraites
-	fmt.Println("ID:", apiResponse.ID)
-	fmt.Println("Model:", apiResponse.Model)
-	fmt.Println("Contenu du message:", apiResponse.Choices[0].Message.Content)
-	fmt.Println("Nombre total de tokens utilisés:", apiResponse.Usage.TotalTokens)
+	import (
+		"context"
+	"model"
+	"adapter"
+	)
 
-	writeTest()
-}
+	type PickupPointUseCase struct {
+		dbAdapter *adapter.DBAdapter
+	}
 
-func writeTest() {
-		fmt.Println("toto")
-}
+	func NewPickupPointUseCase(adapter *adapter.DBAdapter) *PickupPointUseCase {
+		return &PickupPointUseCase{
+		dbAdapter: adapter,
+	}
+	}
 
-func unusedFunc() {
-		fmt.Println("toto")
-}
-`
+	func (uc *PickupPointUseCase) GetPickupPointByID(ctx context.Context, id int) (*model.PickupPoint, error) {
+		return uc.dbAdapter.GetPickupPointByID(ctx, id)
+	}
+	` + "```" + `
+
+**handler/pickup_point.go**
+` + "```go" + `
+	package handler
+
+	import (
+		"net/http"
+	"encoding/json"
+	"strconv"
+	"usecase"
+	"log"
+	)
+
+	type PickupPointHandler struct {
+		useCase *usecase.PickupPointUseCase
+	}
+
+	func NewPickupPointHandler(useCase *usecase.PickupPointUseCase) *PickupPointHandler {
+		return &PickupPointHandler{
+		useCase: useCase,
+	}
+	}
+
+	func (h *PickupPointHandler) GetPickupPointByID(w http.ResponseWriter, r *http.Request) {
+		idStr := r.URL.Query().Get("id")
+		id, err := strconv.Atoi(idStr)
+		if err != nil {
+			http.Error(w, "Invalid ID", http.StatusBadRequest)
+			return
+		}
+
+		pickupPoint, err := h.useCase.GetPickupPointByID(r.Context(), id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		response, _ := json.Marshal(pickupPoint)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(response)
+	}
+` + "```" + `
+
+**main.go**
+` + "```go" + `
+	package main
+
+	import (
+		"net/http"
+	"handler"
+	"adapter"
+	"usecase"
+	)
+
+	func main() {
+		dbAdapter := adapter.NewDBAdapter("postgres://username:password@localhost/dbname?sslmode=disable")
+		pickupPointUseCase := usecase.NewPickupPointUseCase(dbAdapter)
+		pickupPointHandler := handler.NewPickupPointHandler(pickupPointUseCase)
+
+		http.HandleFunc("/pickup-point", pickupPointHandler.GetPickupPointByID)
+		http.ListenAndServe(":8080", nil)
+	}
+	` + "```"
 }
 
 func (j *job) mockOpenAIStepStartError() string {

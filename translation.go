@@ -1,10 +1,13 @@
 package main
 
 import (
+	"embed"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 )
+
+//go:embed i18n/*.json
+var translations embed.FS
 
 type Translations map[string]string
 
@@ -19,7 +22,7 @@ func (j *job) loadTranslations() error {
 		return fmt.Errorf("unsupported language: %v", j.lang)
 	}
 
-	file, err := ioutil.ReadFile(translationFile)
+	file, err := translations.ReadFile(translationFile)
 	if err != nil {
 		return fmt.Errorf("could not read translation file: %v", err)
 	}

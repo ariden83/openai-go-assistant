@@ -12,7 +12,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // addImport ajoute un import à la liste des imports existants.
@@ -95,12 +98,11 @@ func (j *job) removeUnusedImports(unusedImports []string, currentFileName string
 	return j.writeFile(currentFileName, formattedCode)
 }
 
-// stepFixCode met à jour le code Go existant avec les suggestions d'OpenAI.
+// stepFixCode updates the source code with OpenAI imports and declarations.
 func (j *job) stepFixCode(currentFileName, openAIResponse string) ([]byte, error) {
 
 	openAIResponse = strings.TrimSpace(openAIResponse)
 
-	// Extraire les imports proposés par OpenAI
 	openAIImports, err := j.extractImportsFromCode("openAI", openAIResponse)
 	if err != nil {
 		return nil, fmt.Errorf(j.t("error extracting OpenAI imports")+": %v", err)
@@ -113,7 +115,6 @@ func (j *job) stepFixCode(currentFileName, openAIResponse string) ([]byte, error
 		data = j.currentSrcTest
 	}
 
-	// Extraire les imports existants dans le fichier
 	existingImports, err := j.extractImportsFromCode("local", string(data))
 	if err != nil {
 		return nil, fmt.Errorf(j.t("error extracting existing imports")+": %v", err)
@@ -361,6 +362,7 @@ func (j *job) stepFixCode(currentFileName, openAIResponse string) ([]byte, error
 	return j.nodeToBytes(fs, node)
 }
 
+// nodeToBytes converts an AST node into a byte array.
 func (j *job) nodeToBytes(fs *token.FileSet, node *ast.File) ([]byte, error) {
 	var modifiedFile bytes.Buffer
 
@@ -385,7 +387,40 @@ func (j *job) nodeToBytes(fs *token.FileSet, node *ast.File) ([]byte, error) {
 	return formattedCode, nil
 }
 
-// writeFile écrit le contenu du fichier modifié dans le fichier d'origine, stdout ou un fichier de destination.
+// removePrefix removes a numeric prefix followed by a period and a space.
+func (j *job) removePrefix(filename string) string {
+	// Regex pour capturer un préfixe de type "4. "
+	re := regexp.MustCompile(`^\d+\.\s*`)
+	// Supprime le préfixe trouvé
+	return re.ReplaceAllString(filename, "")
+}
+
+// createAndWriteFile creates a file with the package and writes the contents.
+func (j *job) createAndWriteFile(currentFileName string) error {
+
+	log.Infof("creating file for %s", j.fileDir+"/"+currentFileName)
+	if err := j.createFolders(j.fileDir + "/" + currentFileName); err != nil {
+		return err
+	} else {
+		log.Infof("folder create for %s", j.fileDir+"/"+currentFileName)
+	}
+
+	if err := j.createFileWithPackage(currentFileName); err != nil {
+		return err
+	} else {
+		log.Infof("file create for %s", j.fileDir+"/"+currentFileName)
+	}
+
+	src, err := j.readFileContent(currentFileName)
+	if err != nil {
+		return err
+	}
+
+	j.currentSrcSource = src
+	return nil
+}
+
+// writeFile writes the contents of the modified file to the original file, stdout, or a destination file.
 func (j *job) writeFile(currentFileName string, res []byte) error {
 
 	var src []byte
@@ -433,7 +468,7 @@ func (j *job) writeFile(currentFileName string, res []byte) error {
 	return nil
 }
 
-// createNewTestFile crée un nouveau fichier s'il n'existe pas déjà.
+// createNewTestFile creates a new test file if it doesn't already exist.
 func (j *job) createNewTestFile() ([]byte, error) {
 	// Construit le chemin complet du fichier.
 	fullPath := filepath.Join(j.fileDir, j.currentTestFileName)
@@ -455,8 +490,7 @@ func (j *job) createNewTestFile() ([]byte, error) {
 	defer file.Close()
 
 	fmt.Println(j.t("File created successfully"), fullPath)
-	dirName := filepath.Base(j.fileDir)
-	packageName := sanitizePackageName(dirName)
+	packageName := sanitizePackageName(fullPath)
 	if _, err = file.WriteString(fmt.Sprintf("package %s\n\n", packageName)); err != nil {
 		return nil, fmt.Errorf(j.t("error writing file")+": %v", err)
 	}
@@ -464,21 +498,34 @@ func (j *job) createNewTestFile() ([]byte, error) {
 	return j.readFileContent(j.currentTestFileName)
 }
 
-// setupGoMod initialise le module Go si le fichier go.mod n'existe pas.
+// setupGoMod initializes the Go module if necessary.
 func (j *job) setupGoMod() error {
-	// Initialisation du module si le fichier go.mod n'existe pas
-	goModPath := filepath.Join(j.fileDir, "go.mod")
-	if _, err := os.Stat(goModPath); os.IsNotExist(err) {
-		cmdInit := exec.Command("go", "mod", "init", "generated_code_module")
-		cmdInit.Dir = j.fileDir // Définit le répertoire de travail pour `go mod init`
-		if output, err := cmdInit.CombinedOutput(); err != nil {
-			return fmt.Errorf(j.t("error during module initialization")+": %v - %s", err, output)
+
+	goModPath, err := j.findGoMod()
+	if err != nil {
+		log.WithError(err).Info("error finding go.mod file")
+		// Initialisation du module si le fichier go.mod n'existe pas
+		goModPath := filepath.Join(j.fileDir, "go.mod")
+		if _, err := os.Stat(goModPath); os.IsNotExist(err) {
+			cmdInit := exec.Command("go", "mod", "init", "generated_code_module")
+			cmdInit.Dir = j.fileDir
+			if output, err := cmdInit.CombinedOutput(); err != nil {
+				return fmt.Errorf(j.t("error during module initialization")+": %v - %s", err, output)
+			}
 		}
+
+	} else {
+		j.fileDir = "./" + filepath.Dir(goModPath)
 	}
+
+	if err := j.getModulePath(); err != nil {
+		return fmt.Errorf(j.t("error getting module path")+": %v", err)
+	}
+
 	return nil
 }
 
-// updateGoMod met à jour le fichier go.mod et le dossier vendor si nécessaire.
+// updateGoMod updates the go.mod file and vendor directory.
 func (j *job) updateGoMod() error {
 	cmdTidy := exec.Command("go", "mod", "tidy")
 	cmdTidy.Dir = j.fileDir // Définit le répertoire de travail pour `go mod tidy`

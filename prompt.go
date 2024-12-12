@@ -4,13 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/fatih/color"
 	"github.com/manifoldco/promptui"
+	log "github.com/sirupsen/logrus"
 )
 
 var (
@@ -20,7 +20,7 @@ var (
 	red     func(a ...interface{}) string
 )
 
-// init initialise la fonction blue pour afficher du texte en bleu.
+// init initializes the blue function to display text in blue.
 func init() {
 	blue = color.New(color.FgBlue).SprintFunc()
 	green = color.New(color.FgGreen).SprintFunc()
@@ -28,15 +28,31 @@ func init() {
 	red = color.New(color.FgRed).SprintFunc()
 }
 
-// prepareGoPrompt ajoute le contexte pour spécifier que la question porte sur du code Go.
+func (j *job) archiPrompt() map[string]string {
+	return map[string]string{
+		"role": "system",
+		"content": j.t("Here is the current project tree") + ": " + j.repoStructure + ".\n\n" +
+			j.t("Here is the main import path to use from root") + ": " + j.modulePath + ".",
+	}
+}
+
+// prepareGoPrompt adds context to specify that the question is about Go code.
 func (j *job) prepareGoPrompt(userPrompt string) string {
 	// Ajouter le contexte pour spécifier que la question porte sur du code Go
 	goContextPrefix := j.t("Write code in Go to solve the following problem") + " :\n\n"
-	goContextSuffix := "\n\n" + j.t("Reply without comment or explanation")
+
+	goContextSuffix := ".\n\n" + j.t("The current project architecture consists of the following files") + ":\n\n" +
+		"- `model`: " + j.t("contains data structures") + ".\n" +
+		"- `usecase`: " + j.t("contains business logic") + ".\n" +
+		"- `adapter`: " + j.t("contains implementations for interacting with external services or databases") + ".\n" +
+		"- `handler`: " + j.t("contains HTTP route handlers") + ".\n\n" +
+		j.t("In your response, for each part of the code returned, specify in which folder or file the code should be added (for example: `usecase/`, `model/`, `handler/`, etc.)") + ".\n\n" +
+		j.t("Strictly use the following format for each part") + ": `**<folder/file.go>** <code ici>`.\n\n" +
+		j.t("Reply without comment or explanation, only the code needed")
 	return goContextPrefix + userPrompt + goContextSuffix
 }
 
-// loadFilesFromFolder lit les fichiers dans le répertoire donné.
+// loadFilesFromFolder reads files in the given directory.
 func (j *job) loadFilesFromFolder() ([]string, error) {
 	var files []string
 	err := filepath.Walk(j.fileDir, func(path string, info os.FileInfo, err error) error {
@@ -51,7 +67,7 @@ func (j *job) loadFilesFromFolder() ([]string, error) {
 	return files, err
 }
 
-// promptSelectAFileOrCreateANewOne demande à l'utilisateur de sélectionner un fichier existant ou de créer un nouveau fichier.
+// promptSelectAFileOrCreateANewOne asks the user to select an existing file or create a new file.
 func (j *job) promptSelectAFileOrCreateANewOne(filesFound []string) error {
 	confirmPrompt := promptui.Prompt{
 		Label:     fmt.Sprintf(j.t("Files found in repo %s, create one"), j.fileDir),
@@ -65,59 +81,60 @@ func (j *job) promptSelectAFileOrCreateANewOne(filesFound []string) error {
 	return j.promptSelectExistentFile(filesFound)
 }
 
-// promptSelectExistentFile demande à l'utilisateur de sélectionner un fichier existant.
+// promptSelectExistentFile asks the user to select an existing file.
 func (j *job) promptSelectExistentFile(filesFound []string) error {
-	// Créer un prompt pour sélectionner un fichier
 	filePrompt := promptui.Select{
 		Label: "Select a file",
 		Items: filesFound,
 	}
 
-	// Lire le fichier sélectionné
 	_, selectedFile, err := filePrompt.Run()
 	if err != nil {
 		log.Fatalf(j.t("Error selecting file")+": %v", err)
 	}
 
-	fmt.Println("Selected file:", selectedFile)
+	log.Println("Selected file:", selectedFile)
 
-	// Extraire le chemin du dossier sans le fichier
 	filePath := filepath.Dir(selectedFile)
-
-	// Extraire uniquement le nom du fichier avec l'extension
 	fileNameWithExt := filepath.Base(selectedFile)
 
-	// Afficher le fichier et son chemin
-	fmt.Println("Selected file:", selectedFile)
-	fmt.Println("File path:", filePath)
-	fmt.Println("File name with extension:", fileNameWithExt)
+	log.Println("Selected file:", selectedFile)
+	log.Println("File path:", filePath)
+	log.Println("File name with extension:", fileNameWithExt)
 
-	// Mettre à jour les champs de la struct `job`
 	j.fileName = fileNameWithExt        // Chemin complet du fichier sélectionné
 	j.currentFileName = fileNameWithExt // Nom du fichier avec extension
 	j.fileDir = filePath                // Chemin du dossier
 
+	if err := j.setupGoMod(); err != nil {
+		log.WithError(err).Error(j.t("Error configuring Go modules"))
+		return err
+	}
+
+	j.fileName = strings.TrimPrefix(filePath, j.fileDir) + "/" + fileNameWithExt
+	j.currentFileName = j.fileName
+
+	log.Println("Filename:", j.fileName)
+
 	return nil
 }
 
-// promptNoFilesFoundCreateANewFile demande à l'utilisateur de créer un nouveau fichier.
+// promptNoFilesFoundCreateANewFile asks the user to create a new file.
 func (j *job) promptNoFilesFoundCreateANewFile() error {
-	// Prompt de confirmation pour générer un fichier
 	confirmPrompt := promptui.Prompt{
 		Label:     j.t("No files found, create one"),
 		IsConfirm: true,
 	}
 
-	// Lire la réponse de confirmation
 	_, err := confirmPrompt.Run()
 	if err != nil {
-		fmt.Println(j.t("File generation canceled"))
+		log.Println(j.t("File generation canceled"))
 		return errors.New("end")
 	}
 	return j.promptCreateANewFile()
 }
 
-// getDirectories lit les dossiers dans le répertoire racine.
+// getDirectories reads folders in the root directory.
 func (j *job) getDirectories() ([]string, error) {
 	var directories []string
 
@@ -134,18 +151,15 @@ func (j *job) getDirectories() ([]string, error) {
 	return directories, nil
 }
 
-// promptSelectOrCreateDirectory demande à l'utilisateur de sélectionner un dossier existant ou de créer un nouveau dossier.
+// promptSelectOrCreateDirectory asks the user to select an existing folder or create a new folder.
 func (j *job) promptSelectOrCreateDirectory() (string, error) {
-	// Lire les dossiers existants dans le répertoire racine
 	directories, err := j.getDirectories()
 	if err != nil {
 		return "", fmt.Errorf(j.t("error when reading folders")+": %v", err)
 	}
 
-	// Ajouter l'option de création de nouveau chemin
 	directories = append(directories, j.t("Create a new folder"))
 
-	// Sélection de l'option
 	selectPrompt := promptui.Select{
 		Label: j.t("Choose a folder"),
 		Items: directories,
@@ -156,7 +170,6 @@ func (j *job) promptSelectOrCreateDirectory() (string, error) {
 		return "", fmt.Errorf(j.t("error while selecting folder")+": %v", err)
 	}
 
-	// Si l'utilisateur choisit "Créer un nouveau dossier", demander le chemin
 	if selectedDir == j.t("Create a new folder") {
 		pathPrompt := promptui.Prompt{
 			Label: j.t("Enter the path of the new folder"),
@@ -176,15 +189,14 @@ func (j *job) promptSelectOrCreateDirectory() (string, error) {
 	return selectedDir, nil
 }
 
-// promptCreateANewFile demande à l'utilisateur de sélectionner un dossier ou de créer un nouveau fichier.
+// promptCreateANewFile asks the user to select a folder or create a new file.
 func (j *job) promptCreateANewFile() error {
-	fmt.Println(j.t("Select a folder or enter a new path") + " :")
+	log.Println(j.t("Select a folder or enter a new path") + " :")
 	selectedDir, err := j.promptSelectOrCreateDirectory()
 	if err != nil {
 		return err
 	}
 
-	// Prompt pour entrer le nom du fichier si confirmation est "Oui"
 	filenamePrompt := promptui.Prompt{
 		Label: j.t("Enter the file name"),
 		Validate: func(input string) error {
@@ -198,73 +210,86 @@ func (j *job) promptCreateANewFile() error {
 		},
 	}
 
-	// Lire le nom du fichier
 	filename, err := filenamePrompt.Run()
 	if err != nil {
 		log.Fatalf(j.t("Error entering file name")+": %v", err)
 	}
 
 	filename = selectedDir + "/" + filename
-	// Ajouter l'extension .go si elle est absente
 	if !strings.HasSuffix(filename, ".go") {
 		filename += ".go"
 	}
 
-	// Extraire le chemin du dossier
 	dir := filepath.Dir(filename)
-	j.fileDir = j.fileDir + "/" + dir
+	j.fileDir = "./" + strings.Trim(j.fileDir+"/"+dir, "/.")
+	j.fileDirSelected = j.fileDir
 
-	// Créer les dossiers nécessaires si le chemin contient un sous-dossier
 	if dir != "." {
 		if err := os.MkdirAll(j.fileDir, 0755); err != nil {
 			log.Fatalf(j.t("Error creating folders")+": %v", err)
 		}
 	}
 
-	fileNameWithExt := filepath.Base(filename)
+	// update j.fileDir
+	if err := j.setupGoMod(); err != nil {
+		log.WithError(err).Error(j.t("Error configuring Go modules"))
+		return err
+	}
 
-	// Créer le fichier avec le nom donné
-	if err = j.createFileWithPackage(fileNameWithExt); err != nil {
+	j.fileName = strings.TrimPrefix("./"+filename, j.fileDir)
+	j.currentFileName = j.fileName
+
+	if err = j.createFileWithPackage(j.fileName); err != nil {
 		log.Fatalf(j.t("Error creating file")+": %v", err)
 	}
 
-	// Extraire uniquement le nom du fichier avec l'extension
+	log.Println(j.t("Selected file")+":", filename)
+	log.Println(j.t("File path")+":", j.fileDir)
+	log.Println(j.t("Current file path")+":", j.fileDirSelected)
+	log.Println(j.t("File name with extension")+":", j.currentFileName)
 
-	// Afficher le fichier et son chemin
-	fmt.Println(j.t("Selected file")+":", filename)
-	fmt.Println(j.t("File path")+":", j.fileDir)
-	fmt.Println(j.t("File name with extension")+":", fileNameWithExt)
-
-	// Mettre à jour les champs de la struct `job`
-	j.fileName = fileNameWithExt        // Chemin complet du fichier sélectionné
-	j.currentFileName = fileNameWithExt // Nom du fichier avec extension
+	// j.fileName = fileNameWithExt
+	// j.currentFileName = fileNameWithExt
 
 	return nil
 }
 
-// createFileWithPackage crée un fichier avec le nom donné et ajoute la ligne de package.
+// createFolders creates the necessary folders if the path contains a sub folder.
+func (j *job) createFolders(file string) error {
+	dir := filepath.Dir(file)
+	if dir != "." {
+		return os.MkdirAll(dir, 0755)
+	}
+	return nil
+}
+
+// createFileWithPackage creates a file with the given name and adds the package line.
 func (j *job) createFileWithPackage(filename string) error {
+	log.Infof("Creating file with package given filename %s %s", j.fileDir, filename)
 	file, err := os.Create(j.fileDir + "/" + filename)
 	if err != nil {
 		return err
 	}
-	defer file.Close()
 
-	dirName := filepath.Base(j.fileDir)
-	packageName := sanitizePackageName(dirName)
-	// Ajouter la ligne de package en haut du fichier
+	defer func() {
+		if err = file.Close(); err != nil {
+			log.Fatalf(j.t("Error closing file")+": %v", err)
+		}
+	}()
+
+	packageName := sanitizePackageName(j.fileDir + "/" + filename)
+
+	log.Infof("Creating file with package give packageName %s", packageName)
 	_, err = file.WriteString(fmt.Sprintf("package %s\n\n", packageName))
 	return err
 }
 
-// promptForQuery demande à l'utilisateur de saisir une question ou une requête.
+// promptForQuery asks the user to enter a question or query.
 func (j *job) promptForQuery() (string, error) {
-	// Définir le prompt
 	prompt := promptui.Prompt{
 		Label: j.t("Enter your question or request to the OpenAI API"),
 	}
 
-	// Lire la réponse de l'utilisateur
 	query, err := prompt.Run()
 	if err != nil {
 		return "", fmt.Errorf(j.t("error when entering question")+" : %v", err)
