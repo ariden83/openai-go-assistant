@@ -1,11 +1,8 @@
 package main
 
 import (
-	"bytes"
-	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -30,19 +27,11 @@ func min(a, b int) int {
 	return b
 }
 
-// removeDuplicates removes duplicates from a string array.
-func removeDuplicates(strings []string) []string {
-	unique := make(map[string]struct{})
-	result := []string{}
-
-	for _, str := range strings {
-		if _, exists := unique[str]; !exists {
-			unique[str] = struct{}{}
-			result = append(result, str)
-		}
-	}
-
-	return result
+// Node represents a node in the tree (directory or file).
+type Node struct {
+	Name     string
+	Children map[string]*Node
+	IsFile   bool
 }
 
 // ArrayStringFlag are defined for string flags that may have multiple values.
@@ -63,6 +52,21 @@ func (f *ArrayStringFlag) Get() interface{} {
 func (f *ArrayStringFlag) Set(value string) error {
 	*f = append(*f, value)
 	return nil
+}
+
+// removeDuplicates removes duplicates from a string array.
+func removeDuplicates(strings []string) []string {
+	unique := make(map[string]struct{})
+	result := []string{}
+
+	for _, str := range strings {
+		if _, exists := unique[str]; !exists {
+			unique[str] = struct{}{}
+			result = append(result, str)
+		}
+	}
+
+	return result
 }
 
 // sanitizePackageName cleans up the package name so that it is valid.
@@ -86,127 +90,11 @@ func sanitizePackageName(dirName string) string {
 	}
 
 	// Étape 3 : S'assurer que le nom n'est pas vide
-	if sanitized == "" {
+	if sanitized == "" || sanitized == "_" {
 		sanitized = "main"
 	}
 
 	return sanitized
-}
-
-// getModulePath returns the path of the current module.
-func (j *job) getModulePath() error {
-	cmd := exec.Command("go", "list", "-m")
-	cmd.Dir = j.fileDir
-
-	var out bytes.Buffer
-	cmd.Stdout = &out
-
-	if err := cmd.Run(); err != nil {
-		return err
-	}
-
-	j.modulePath = strings.TrimSpace(out.String())
-	return j.adjustModulePath()
-}
-
-func (j *job) findGoModPath() (string, error) {
-	var goModPath string
-	err := filepath.Walk(j.fileDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.Name() == "go.mod" {
-			goModPath = path
-			return filepath.SkipDir // Stop dès qu'on trouve un go.mod
-		}
-		return nil
-	})
-	if err != nil {
-		return "", fmt.Errorf("error while searching for go.mod: %w", err)
-	}
-	if goModPath == "" {
-		return "", fmt.Errorf("no go.mod file found in or above %s", j.fileDir)
-	}
-	return goModPath, nil
-}
-
-// adjustModulePath adjusts the module path based on the modulePath.
-func (j *job) adjustModulePath() error {
-	if strings.Contains(j.modulePath, "github") {
-		return nil
-	}
-
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf(j.t("Error retrieving current directory")+":", err)
-	}
-
-	cwd = cwd + string(filepath.Separator) + j.fileDir
-
-	gopath := os.Getenv("GOPATH")
-	if gopath == "" {
-		gopath = filepath.Join(os.Getenv("HOME"), "go")
-	}
-
-	srcPrefix := filepath.Join(gopath, "src") + string(filepath.Separator)
-
-	relativePath := strings.TrimPrefix(cwd, srcPrefix)
-	relativePath = strings.TrimSuffix(relativePath, "/go.mod")
-	relativePath = strings.ReplaceAll(relativePath, "/./", "/")
-
-	// Déterminer le dernier répertoire à inclure basé sur fileDir
-	// Exemple : si fileDir = "/./adevinta", garder jusqu'à "adevinta"
-	fileDir := strings.Trim(j.fileDir, "/.") // Nettoyer les `/` ou `.`
-	lastDir := filepath.Base(fileDir)        // Récupérer le dernier répertoire
-
-	if strings.Contains(relativePath, lastDir) {
-		parts := strings.Split(relativePath, string(filepath.Separator))
-		for i, part := range parts {
-			if part == lastDir {
-				j.modulePath = strings.Join(parts[:i+1], "/")
-				return nil
-			}
-		}
-	}
-
-	return fmt.Errorf("could not find %s in path %s", lastDir, relativePath)
-}
-
-// findGoMod find the go.mod file in the current directory or one of its parents.
-func (j *job) findGoMod() (string, error) {
-	startPath := j.fileDir + "/" + j.fileName
-
-	goPath := os.Getenv("GOPATH")
-	if goPath == "" {
-		goPath = filepath.Join(os.Getenv("HOME"), "go") // Valeur par défaut si GOPATH n'est pas défini
-	}
-
-	// Construire le srcPath
-	srcPath := filepath.Join(goPath, "src")
-
-	// Démarrer la recherche
-	currentPath := startPath
-	for {
-		// Vérifier si le fichier go.mod existe dans le répertoire courant
-		goModPath := filepath.Join(currentPath, "go.mod")
-		if _, err := os.Stat(goModPath); err == nil {
-			return goModPath, nil
-		}
-
-		// Si le dossier courant est égal ou contient "/go/src/", arrêter la recherche
-		if strings.HasPrefix(currentPath, srcPath) {
-			return "", errors.New("no go.mod file found up to the /go/src/ boundary")
-		}
-
-		// Remonter d'un niveau
-		parentDir := filepath.Dir(currentPath)
-		if parentDir == currentPath { // Si on atteint la racine
-			break
-		}
-		currentPath = parentDir
-	}
-
-	return "", errors.New("no go.mod file found")
 }
 
 // findReposAndSubRepos finds all repositories and sub-repositories in the current directory.
@@ -271,14 +159,7 @@ func (j *job) findReposAndSubRepos() error {
 	return nil
 }
 
-// Node représente un nœud de l'arborescence (répertoire ou fichier)
-type Node struct {
-	Name     string
-	Children map[string]*Node
-	IsFile   bool
-}
-
-// Ajouter un chemin à l'arborescence
+// AddPath adds a path to the tree.
 func (n *Node) AddPath(pathParts []string) {
 	if len(pathParts) == 0 {
 		return
@@ -301,7 +182,7 @@ func (n *Node) AddPath(pathParts []string) {
 	}
 }
 
-// Formater l'arborescence avec une indentation correcte
+// Format returns a string representation of the tree.
 func (n *Node) Format(indent string, skipRoot bool) string {
 	var builder strings.Builder
 
@@ -329,7 +210,7 @@ func (n *Node) Format(indent string, skipRoot bool) string {
 	return builder.String()
 }
 
-// Fonction principale pour formater les chemins en hiérarchie
+// formatRepo formats the given paths into a tree.
 func formatRepo(paths []string) string {
 	root := &Node{
 		Name:     "toto", // Nom de la racine

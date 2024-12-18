@@ -10,7 +10,6 @@ import (
 	"go/printer"
 	"go/token"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -18,18 +17,17 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// addImport ajoute un import à la liste des imports existants.
+// addImport adds an import to the list of existing imports.
 func addImport(existingImports []string, newImport string) []string {
-	// Vérifier si l'import existe déjà
 	for _, imp := range existingImports {
 		if imp == newImport {
 			return existingImports // Ne rien faire si l'import existe déjà
 		}
 	}
-	// Ajouter l'import à la liste
 	return append(existingImports, newImport)
 }
 
+// removeUnusedImports removes unused imports from the source code.
 func (j *job) removeUnusedImports(unusedImports []string, currentFileName string) error {
 	var data []byte
 	if currentFileName == j.currentSourceFileName {
@@ -470,10 +468,8 @@ func (j *job) writeFile(currentFileName string, res []byte) error {
 
 // createNewTestFile creates a new test file if it doesn't already exist.
 func (j *job) createNewTestFile() ([]byte, error) {
-	// Construit le chemin complet du fichier.
 	fullPath := filepath.Join(j.fileDir, j.currentTestFileName)
 
-	// Vérifie si le fichier existe déjà.
 	if _, err := os.Stat(fullPath); err == nil {
 		fmt.Println(j.t("The file already exists"), fullPath)
 		return j.readFileContent(j.currentTestFileName)
@@ -487,58 +483,17 @@ func (j *job) createNewTestFile() ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf(j.t("error creating file")+": %v", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			log.WithError(err).Error(j.t("Error closing file"))
+		}
+	}()
 
-	fmt.Println(j.t("File created successfully"), fullPath)
+	log.Println(j.t("File created successfully"), fullPath)
 	packageName := sanitizePackageName(fullPath)
 	if _, err = file.WriteString(fmt.Sprintf("package %s\n\n", packageName)); err != nil {
 		return nil, fmt.Errorf(j.t("error writing file")+": %v", err)
 	}
 
 	return j.readFileContent(j.currentTestFileName)
-}
-
-// setupGoMod initializes the Go module if necessary.
-func (j *job) setupGoMod() error {
-
-	goModPath, err := j.findGoMod()
-	if err != nil {
-		log.WithError(err).Info("error finding go.mod file")
-		// Initialisation du module si le fichier go.mod n'existe pas
-		goModPath := filepath.Join(j.fileDir, "go.mod")
-		if _, err := os.Stat(goModPath); os.IsNotExist(err) {
-			cmdInit := exec.Command("go", "mod", "init", "generated_code_module")
-			cmdInit.Dir = j.fileDir
-			if output, err := cmdInit.CombinedOutput(); err != nil {
-				return fmt.Errorf(j.t("error during module initialization")+": %v - %s", err, output)
-			}
-		}
-
-	} else {
-		j.fileDir = "./" + filepath.Dir(goModPath)
-	}
-
-	if err := j.getModulePath(); err != nil {
-		return fmt.Errorf(j.t("error getting module path")+": %v", err)
-	}
-
-	return nil
-}
-
-// updateGoMod updates the go.mod file and vendor directory.
-func (j *job) updateGoMod() error {
-	cmdTidy := exec.Command("go", "mod", "tidy")
-	cmdTidy.Dir = j.fileDir // Définit le répertoire de travail pour `go mod tidy`
-	if output, err := cmdTidy.CombinedOutput(); err != nil {
-		return fmt.Errorf(j.t("error running go mod tidy")+": %v - %s", err, output)
-	}
-
-	if j.fileWithVendor {
-		cmdVendor := exec.Command("go", "mod", "vendor")
-		cmdVendor.Dir = j.fileDir // Définit le répertoire de travail pour `go mod vendor`
-		if output, err := cmdVendor.CombinedOutput(); err != nil {
-			return fmt.Errorf(j.t("error running go mod vendor")+": %v - %s", err, output)
-		}
-	}
-	return nil
 }

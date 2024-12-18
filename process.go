@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"fmt"
 	"go/ast"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 
 	log "github.com/sirupsen/logrus"
@@ -47,8 +49,9 @@ type job struct {
 	openAIApiKey          secret.String
 	openAIURL             string
 	openAIMaxTokens       int
-	trad                  Translations
 	source                fileSource
+	trad                  Translations
+	validateEachStep      bool
 }
 
 // newJob create a new job.
@@ -85,6 +88,7 @@ func newJob(cache *ConfigCache, fileDir string, args *appArgs) (*job, error) {
 		openAIURL:             cache.rootConfig.OpenAIURL,
 		lang:                  "en",
 		args:                  args,
+		validateEachStep:      false,
 	}
 
 	return &j, nil
@@ -135,6 +139,14 @@ func (j *job) run() error {
 				return j.run()
 			}
 			continue
+
+		} else if j.currentStep == stepProjectStructuring {
+			// si il y a plus que deux dossiers dans le repo sélectionné, nous ne faisons rien.
+			nbFolders, err := j.countDirectories()
+			if err != nil || nbFolders > 2 {
+				continue
+			}
+			prompt = j.getPromptToAskProjectStructuring(prompt)
 
 		} else if j.currentStep == stepStart {
 
@@ -192,82 +204,25 @@ func (j *job) run() error {
 			log.Infof("API response:\n\n"+green("\"%s\"")+"\n\n", code)
 
 			var output string
-			if j.currentStep == stepStart {
 
-				filesAndCode := j.splitFilesAndCode(code)
+			if j.currentStep == stepProjectStructuring {
 
-				for file, codeReceived := range filesAndCode {
-					j.currentFileName = file
-					j.currentSourceFileName = file
-					j.fileName = file
+				parseListFolders := j.parseListFolders(code)
+				j.createFoldersFromList(parseListFolders)
+				continue
 
-					if err := j.createAndWriteFile(file); err != nil {
-						log.WithError(err).Error(j.t("Error updating file"))
-						return err
-					}
+			} else if j.currentStep == stepStart {
 
-					log.Infof("API parsed response:\n\n"+green("\"%s\"")+"\n\n", codeReceived)
-					codeModified, err := j.stepFixCode(file, codeReceived)
-					if err != nil {
-						log.WithError(err).Error(j.t("Error to get code modified"))
-						return err
-					}
-
-					if err := j.writeFile(file, codeModified); err != nil {
-						log.WithError(err).Error(j.t("Error updating file"))
-						return err
-					}
+				var mustBreak, mustContinue bool
+				prompt, output, mustBreak, mustContinue, err = j.runStepStart(stepEntry, code)
+				if err != nil {
+					return err
 				}
-
-				// puis, pour chacun des fichiers on teste le code.
-				for file, codeReceived := range filesAndCode {
-					j.currentFileName = file
-					j.currentSourceFileName = file
-					j.fileName = file
-
-					testFileName, err := j.getTestFilename()
-					if err != nil {
-						return err
-					}
-					log.Infof("testFileName: %s", testFileName)
-					j.currentTestFileName = testFileName
-
-					for attempt := 1; attempt <= j.maxAttempts; attempt++ {
-						if attempt != 1 {
-							log.Infof("\nprompt: "+blue("%s")+"\n\n", prompt)
-
-							codeReceived, err = j.callIA(prompt)
-							if err != nil {
-								log.WithError(err).Error(j.t("Error generating code"))
-								return err
-							}
-
-							log.Infof("API response:\n\n"+green("\"%s\"")+"\n\n", codeReceived)
-
-							codeModified, err := j.stepFixCode(file, codeReceived)
-							if err != nil {
-								log.WithError(err).Error(j.t("Error to get code modified"))
-								return err
-							}
-
-							if err := j.writeFile(file, codeModified); err != nil {
-								log.WithError(err).Error(j.t("Error updating file"))
-								return err
-							}
-						}
-
-						var mustBreak, mustContinue bool
-						prompt, output, mustBreak, mustContinue, err = j.runContentForFile(stepEntry, file, codeReceived)
-						if err != nil {
-							return err
-						}
-						if mustBreak {
-							break
-						}
-						if mustContinue {
-							continue
-						}
-					}
+				if mustBreak {
+					break
+				}
+				if mustContinue {
+					continue
 				}
 
 			} else {
@@ -275,8 +230,13 @@ func (j *job) run() error {
 				fileToModify, codeReceived := j.splitFileNameAndCode(code)
 				log.Infof(j.t("file to modify") + ": " + green(fileToModify) + "\n\n")
 
+				if err := j.fixCodeAndWriteFile(fileToModify, codeReceived); err != nil {
+					log.WithError(err).Error(j.t("Error fixing code and writing file"))
+					return err
+				}
+
 				var mustBreak, mustContinue bool
-				prompt, output, mustBreak, mustContinue, err = j.runContentForFile(stepEntry, fileToModify, codeReceived)
+				prompt, output, mustBreak, mustContinue, err = j.runContentForFile(stepEntry)
 				if err != nil {
 					return err
 				}
@@ -314,7 +274,85 @@ func (j *job) run() error {
 	return j.run()
 }
 
-func (j *job) runContentForFile(stepEntry StepWithError, fileToModify, code string) (prompt, output string, mustBreak, mustContinue bool, err error) {
+func (j *job) runStepStart(stepEntry StepWithError, code string) (prompt, output string, mustBreak, mustContinue bool, err error) {
+	filesAndCode := j.splitFilesAndCode(code)
+
+	for file, codeReceived := range filesAndCode {
+		j.currentFileName = file
+		j.currentSourceFileName = file
+		j.fileName = file
+
+		if err = j.createAndWriteFile(file); err != nil {
+			log.WithError(err).Error(j.t("Error updating file"))
+			return
+		}
+
+		var codeModified []byte
+		log.Infof("API parsed response:\n\n"+green("\"%s\"")+"\n\n", codeReceived)
+		codeModified, err = j.stepFixCode(file, codeReceived)
+		if err != nil {
+			log.WithError(err).Error(j.t("Error to get code modified"))
+			return
+		}
+
+		if err = j.writeFile(file, codeModified); err != nil {
+			log.WithError(err).Error(j.t("Error updating file"))
+			return
+		}
+	}
+
+	j.waitingPrompt()
+
+	// we move on to executing the files for the tests.
+	for file, codeReceived := range filesAndCode {
+		j.currentFileName = file
+		j.currentSourceFileName = file
+		j.fileName = file
+
+		var testFileName string
+		testFileName, err = j.getTestFilename()
+		if err != nil {
+			return
+		}
+
+		log.Infof("create or update test fileName: %s", testFileName)
+		j.currentTestFileName = testFileName
+
+		for attempt := 1; attempt <= j.maxAttempts; attempt++ {
+			if attempt != 1 {
+				log.Infof("\nprompt: "+blue("%s")+"\n\n", prompt)
+
+				codeReceived, err = j.callIA(prompt)
+				if err != nil {
+					log.WithError(err).Error(j.t("Error generating code"))
+					return
+				}
+
+				log.Infof("API response:\n\n"+green("\"%s\"")+"\n\n", codeReceived)
+
+				if err = j.fixCodeAndWriteFile(file, codeReceived); err != nil {
+					log.WithError(err).Error(j.t("Error fixing code and writing file"))
+					return
+				}
+			}
+
+			prompt, output, mustBreak, mustContinue, err = j.runContentForFile(stepEntry)
+			if err != nil {
+				return "", "", false, false, err
+			}
+			if mustBreak {
+				break
+			}
+			if mustContinue {
+				continue
+			}
+		}
+	}
+	return
+}
+
+// fixCodeAndWriteFile fixes the code and writes the file.
+func (j *job) fixCodeAndWriteFile(fileToModify, code string) (err error) {
 	var codeModified []byte
 	codeModified, err = j.stepFixCode(fileToModify, code)
 	if err != nil {
@@ -327,18 +365,56 @@ func (j *job) runContentForFile(stepEntry StepWithError, fileToModify, code stri
 		return
 	}
 
+	return
+}
+
+// createAndWriteFile creates and writes the file.
+func (j *job) createFoldersFromList(paths []string) {
+	for _, path := range paths {
+		fullPath := filepath.Join(j.fileDir, path)
+		if filepath.Ext(path) == "" { // Vérifie si c'est un dossier
+			err := os.MkdirAll(fullPath, os.ModePerm)
+			if err != nil {
+				fmt.Printf("Erreur lors de la création du dossier %s : %v\n", fullPath, err)
+				continue
+			}
+			fmt.Printf("Dossier créé : %s\n", fullPath)
+		} else { // Si c'est un fichier
+			// S'assurer que le dossier parent existe
+			parentDir := filepath.Dir(fullPath)
+			err := os.MkdirAll(parentDir, os.ModePerm)
+			if err != nil {
+				fmt.Printf("Erreur lors de la création du dossier parent %s : %v\n", parentDir, err)
+				continue
+			}
+
+			// Créer le fichier si nécessaire
+			file, err := os.Create(fullPath)
+			if err != nil {
+				fmt.Printf("Erreur lors de la création du fichier %s : %v\n", fullPath, err)
+				continue
+			}
+			if err := file.Close(); err != nil {
+				fmt.Printf("Erreur lors de la fermeture du fichier %s : %v\n", fullPath, err)
+			}
+			fmt.Printf("Fichier créé : %s\n", fullPath)
+		}
+	}
+}
+
+// runContentForFile executes the content of the file.
+func (j *job) runContentForFile(stepEntry StepWithError) (prompt, output string, mustBreak, mustContinue bool, err error) {
+
 	if err = j.updateGoMod(); err != nil {
 		log.WithError(err).Error(j.t("Error configuring Go modules"))
 		return
 	}
 
-	// Exécution de goimports pour corriger les imports manquants.
 	if err = j.fixImports(); err != nil {
 		log.WithError(err).Error(j.t("Error correcting imports"))
 		return
 	}
 
-	// Exécution du fichier Go.
 	output, err = j.runGolangFile()
 	if err != nil {
 		log.Infof("------------------------------------ code result (failed): \n\n %s", output)

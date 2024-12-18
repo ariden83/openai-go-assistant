@@ -36,6 +36,7 @@ type Config struct {
 	OpenAITemperature float32  `yaml:"openai_temperature"`
 	OpenAIURL         string   `yaml:"openai_url"`
 	OpenAITags        []string `yaml:"openai_tags"`
+	ValidateEachStep  bool     `yaml:"validate_each_step"`
 }
 
 // ConfigCache is a cache to contains the configuration for all processed files.
@@ -69,14 +70,26 @@ func (j *job) updateCache() error {
 	if cfg.Lang != "" {
 		j.lang = cfg.Lang
 	}
-	j.conversation.Temperature = cfg.OpenAITemperature
-	j.conversation.Model = cfg.OpenAIModel
+	if cfg.OpenAITemperature != 0.0 {
+		j.conversation.Temperature = cfg.OpenAITemperature
+	}
+	if cfg.OpenAIModel != "" {
+		j.conversation.Model = cfg.OpenAIModel
+	}
 	// j.conversation.MaxTokens = cfg.OpenAIMaxTokens
+	if cfg.OpenAIURL != "" {
+		j.openAIURL = cfg.OpenAIURL
+	}
+	if cfg.ValidateEachStep {
+		j.validateEachStep = cfg.ValidateEachStep
+	}
+	if cfg.OpenAIKey != "" {
+		j.openAIApiKey = secret.String(cfg.OpenAIKey)
+	}
 
-	j.openAIURL = cfg.OpenAIURL
-	j.openAIApiKey = secret.String(cfg.OpenAIKey)
-
-	j.maxAttempts = cfg.MaxAttempts
+	if cfg.MaxAttempts != 0 {
+		j.maxAttempts = cfg.MaxAttempts
+	}
 
 	if err := j.loadTranslations(); err != nil {
 		return err

@@ -14,6 +14,8 @@ import (
 // callIA calls the OpenAI API with the given prompt and returns the response.
 func (j *job) callIA(prompt string) (string, error) {
 
+	j.waitingPrompt()
+
 	prompt = strings.TrimSpace(prompt)
 	if prompt == "" {
 		return "", fmt.Errorf(j.t("empty prompt"))

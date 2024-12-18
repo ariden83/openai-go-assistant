@@ -22,8 +22,8 @@ type appArgs struct {
 	diffOnly bool
 }
 
+// init initializes the logger.
 func init() {
-	// Configurer le logger pour inclure la date, l'heure, et les informations sur le fichier/ligne
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	log.SetOutput(os.Stdout)
 }
@@ -103,7 +103,7 @@ func process(args *appArgs, paths ...string) error {
 func (j *job) processFileFromFolder() error {
 	filesFound, err := j.loadFilesFromFolder()
 	if err != nil {
-		logger.Println(j.t("No files found in the specified folder, create a new one"), err)
+		logger.WithError(err).Println(j.t("No files found in the specified folder, create a new one"))
 		if err := j.promptNoFilesFoundCreateANewFile(); err != nil {
 			return err
 		}

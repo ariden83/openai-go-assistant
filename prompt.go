@@ -28,6 +28,31 @@ func init() {
 	red = color.New(color.FgRed).SprintFunc()
 }
 
+// waitingPrompt displays a prompt to ask the user if they want to continue.
+func (j *job) waitingPrompt() {
+	if !j.validateEachStep {
+		return
+	}
+	prompt := promptui.Select{
+		Label: j.t("Continue ?"),
+		Items: []string{j.t("Yes"), j.t("No")},
+	}
+
+	_, result, err := prompt.Run()
+	if err != nil {
+		log.Fatalf(j.t("Error while entering")+" : %v", err)
+	}
+
+	switch result {
+	case j.t("Yes"):
+	case j.t("No"):
+		fmt.Println(j.t("You chose to stop"))
+		log.Fatal(j.t("Stopping the script"))
+	default:
+		fmt.Println(j.t("Option inconnue"))
+	}
+}
+
 func (j *job) archiPrompt() map[string]string {
 	return map[string]string{
 		"role": "system",
@@ -41,14 +66,11 @@ func (j *job) prepareGoPrompt(userPrompt string) string {
 	// Ajouter le contexte pour spécifier que la question porte sur du code Go
 	goContextPrefix := j.t("Write code in Go to solve the following problem") + " :\n\n"
 
-	goContextSuffix := ".\n\n" + j.t("The current project architecture consists of the following files") + ":\n\n" +
-		"- `model`: " + j.t("contains data structures") + ".\n" +
-		"- `usecase`: " + j.t("contains business logic") + ".\n" +
-		"- `adapter`: " + j.t("contains implementations for interacting with external services or databases") + ".\n" +
-		"- `handler`: " + j.t("contains HTTP route handlers") + ".\n\n" +
+	goContextSuffix := ".\n\n" +
 		j.t("In your response, for each part of the code returned, specify in which folder or file the code should be added (for example: `usecase/`, `model/`, `handler/`, etc.)") + ".\n\n" +
 		j.t("Strictly use the following format for each part") + ": `**<folder/file.go>** <code ici>`.\n\n" +
 		j.t("Reply without comment or explanation, only the code needed")
+
 	return goContextPrefix + userPrompt + goContextSuffix
 }
 

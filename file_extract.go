@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"go/ast"
@@ -34,13 +35,28 @@ func (j *job) splitFilesAndCode(response string) map[string]string {
 	matches := regFindNameAndCode.FindAllStringSubmatch(response, -1)
 
 	for _, match := range matches {
-		if match[1] == "main.go" {
-			filesNameAndCode[j.currentFileName] = match[2]
-		} else {
-			filesNameAndCode[match[1]] = match[2]
-		}
+		filesNameAndCode[match[1]] = match[2]
 	}
+
 	return filesNameAndCode
+}
+
+func (j *job) parseListFolders(response string) []string {
+	var paths []string
+	scanner := bufio.NewScanner(strings.NewReader(response))
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue // Ignorer les lignes vides ou les commentaires
+		}
+		// Extraire le chemin en ignorant les commentaires
+		path := strings.Split(line, "#")[0]
+		path = strings.TrimSpace(path)
+		paths = append(paths, path)
+	}
+
+	return paths
 }
 
 // splitFileNameAndCode separates the file name and the code of a response.

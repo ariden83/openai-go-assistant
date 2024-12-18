@@ -13,11 +13,13 @@ const (
 	stepVerifyGoPrompt      step = "verifyGoPrompt"
 	stepVerifyTestPrompt    step = "verifyTestPrompt"
 	stepVerifySwaggerPrompt step = "stepVerifySwaggerPrompt"
-	stepStart               step = "start"
-	stepStartTest           step = "startTest"
-	stepOptimize            step = "optimize"
-	stepAddTest             step = "tests"
-	stepFinish              step = "finish"
+	// stepProjectStructuring is a step to structure the project if folder empty.
+	stepProjectStructuring step = "projectStructuring"
+	stepStart              step = "start"
+	stepStartTest          step = "startTest"
+	stepOptimize           step = "optimize"
+	stepAddTest            step = "tests"
+	stepFinish             step = "finish"
 
 	stepStartError    step = "startError"
 	stepOptimizeError step = "optimizeError"
@@ -35,6 +37,7 @@ type StepWithError struct {
 // stepsOrderDefault is an ordered list of steps for default files.
 var stepsOrderDefault = []StepWithError{
 	{ValidStep: stepVerifyGoPrompt},
+	{ValidStep: stepProjectStructuring},
 	{ValidStep: stepStart, ErrorStep: stepStartError},
 	{ValidStep: stepOptimize, ErrorStep: stepOptimizeError, Prompt: "Optimize this Golang code taking into account readability, performance, and best practices. Only change behavior if it can be improved for more efficient or safer use cases. Return optimizations made, without comment or explanation. Here is the code: \nHere is the Golang code:\n\n"},
 	{ValidStep: stepAddTest, ErrorStep: stepAddTestError},
@@ -104,6 +107,24 @@ func (j *job) getPromptForVerifyPrompt(prompt string) string {
 	default:
 		return fmt.Sprintf(j.t("Responds with true or false in JSON. Is the following question a request for Go code")+" : \"%s\" ?", prompt)
 	}
+}
+
+func (j *job) getPromptToAskProjectStructuring(prompt string) string {
+	return j.t("You are an assistant specialized in software architecture") + ". " +
+		j.t("A user wants to get code to fulfill a specific request which I will provide to you") + ". " +
+		j.t("Before generating the solution, focus only on creating the project folder architecture based on best practices for this request") + "." + "\n\n" +
+		j.t("Here is the user's request") + " :" + "\n\n" + prompt + "\n\n" +
+		j.t("Your answer must") + " : \n\n" +
+		j.t("Be only the structure of the necessary folders and files, presented in tree form") + "." + "\n" +
+		j.t("Include a short explanation of what each important folder or file is for") + "." + "\n" +
+		j.t("Follow recognized conventions for the language and type of project requested") + "." + "\n" +
+		j.t("Example of expected format") + " :" + "\n\n" +
+		"```bash" + `
+	- /cmd              ` + "# " + j.t("Contains the main entry point to the application") + `
+	- /pkg              ` + "# " + j.t("Contains reusable packages") + `
+	- /internal         ` + "# " + j.t("Contains internal project packages") + `
+	- /configs          ` + "# " + j.t("Configuration files") + `
+	- /scripts          ` + "# " + j.t("Build or installation scripts")
 }
 
 // stepAddTestErrorProcessPrompt adds a prompt to handle errors when adding tests.
