@@ -39,8 +39,8 @@ var stepsOrderDefault = []StepWithError{
 	{ValidStep: stepVerifyGoPrompt},
 	{ValidStep: stepProjectStructuring},
 	{ValidStep: stepStart, ErrorStep: stepStartError},
-	{ValidStep: stepOptimize, ErrorStep: stepOptimizeError, Prompt: "Optimize this Golang code taking into account readability, performance, and best practices. Only change behavior if it can be improved for more efficient or safer use cases. Return optimizations made, without comment or explanation. Here is the code: \nHere is the Golang code:\n\n"},
-	{ValidStep: stepAddTest, ErrorStep: stepAddTestError},
+	// {ValidStep: stepOptimize, ErrorStep: stepOptimizeError, Prompt: "Optimize this Golang code taking into account readability, performance, and best practices. Only change behavior if it can be improved for more efficient or safer use cases. Return optimizations made, without comment or explanation. Here is the code: \nHere is the Golang code:\n\n"},
+	// {ValidStep: stepAddTest, ErrorStep: stepAddTestError},
 }
 
 // stepsOrderTest is an ordered list of steps for test files.
@@ -80,7 +80,7 @@ func (j *job) getStepFromFileName() ([]StepWithError, error) {
 		}
 	}
 
-	{
+	/*{
 		src, err := j.readFileContent(j.currentSourceFileName)
 		if err != nil {
 			return stepChoose, err
@@ -93,7 +93,7 @@ func (j *job) getStepFromFileName() ([]StepWithError, error) {
 			return stepChoose, err
 		}
 		j.currentSrcTest = src
-	}
+	}*/
 	return stepChoose, nil
 }
 
@@ -114,17 +114,47 @@ func (j *job) getPromptToAskProjectStructuring(prompt string) string {
 		j.t("A user wants to get code to fulfill a specific request which I will provide to you") + ". " +
 		j.t("Before generating the solution, focus only on creating the project folder architecture based on best practices for this request") + "." + "\n\n" +
 		j.t("Here is the user's request") + " :" + "\n\n" + prompt + "\n\n" +
+		j.t("Here is the current structure of the project repository, given by the user") + " :" + "\n\n" + j.repoStructure + "\n\n" +
 		j.t("Your answer must") + " : \n\n" +
-		j.t("Be only the structure of the necessary folders and files, presented in tree form") + "." + "\n" +
-		j.t("Include a short explanation of what each important folder or file is for") + "." + "\n" +
-		j.t("Follow recognized conventions for the language and type of project requested") + "." + "\n" +
-		j.t("Example of expected format") + " :" + "\n\n" +
+		"- " + j.t("Suggest only folders and files to add or modify in the existing structure to meet the request") + "." + "\n\n" +
+		"- " + j.t("Respect and complement the conventions already in place in the existing structure") + "." + "\n\n" +
+		"- " + j.t("Follow recognized best practices for the language and type of project requested") + "." + "\n\n" +
+		"- " + j.t("Be presented in tree form") + "." + "\n\n" +
+		"- " + j.t("Example of expected format") + " :" + "\n\n" +
 		"```bash" + `
-	- /cmd              ` + "# " + j.t("Contains the main entry point to the application") + `
-	- /pkg              ` + "# " + j.t("Contains reusable packages") + `
-	- /internal         ` + "# " + j.t("Contains internal project packages") + `
-	- /configs          ` + "# " + j.t("Configuration files") + `
-	- /scripts          ` + "# " + j.t("Build or installation scripts")
+	- /cmd             
+	- /pkg 
+	- /internal 
+	- /configs
+	- /scripts
+	` + "```" + "\n\n" +
+		j.t("Reply without comment or explanation")
+}
+
+// getPromptToAskTestsCreation returns a prompt to start the process.
+func (j *job) getPromptToAskTestsCreation() string {
+
+	fileContent := string(j.currentSrcTest)
+
+	prompt := j.t("I have some Golang code") + ":"
+	prompt += "\n\n" + string(fileContent)
+	prompt += "\n\n" + j.t("I would like to enrich these functions with unit tests") + ":"
+	prompt += "\n\n" + j.printTestsFuncName()
+	prompt += "\n\n" + j.t("Can you generate the tests for the nominal cases as well as the error cases? My goal is to ensure comprehensive coverage, particularly for:\n\nExpected success scenarios (nominal cases)\nError handling scenarios\nPlease structure the tests to be easily readable, using t.Run to name each test case.")
+	prompt += "\n\n" + j.t("Reply without comment or explanation")
+	return prompt
+}
+
+func (j *job) getPromptToAskTestCorrection() string {
+	prompt := j.t("Determines whether the problem is in the test file or the source file. Generates a concise response that specifies the file to modify in the form") +
+		": \"MODIFY: <function or section name> (source <folder/filename.go>, not test file)\" or \"MODIFY: <function or section name> (test file)\"." +
+		j.t("Then provide the corrected code in the form") + ": \"CODE: <corrected code>\".\n\n"
+
+	fileContent := string(j.currentSrcTest)
+	if len(fileContent) > 50 {
+		prompt += ".\n\n" + j.t("Here is the Golang code") + " :\n\n" + fileContent
+	}
+	return prompt
 }
 
 // stepAddTestErrorProcessPrompt adds a prompt to handle errors when adding tests.

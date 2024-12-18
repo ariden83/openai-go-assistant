@@ -88,7 +88,7 @@ func newJob(cache *ConfigCache, fileDir string, args *appArgs) (*job, error) {
 		openAIURL:             cache.rootConfig.OpenAIURL,
 		lang:                  "en",
 		args:                  args,
-		validateEachStep:      false,
+		validateEachStep:      cache.rootConfig.ValidateEachStep,
 	}
 
 	return &j, nil
@@ -104,12 +104,12 @@ func (j *job) run() error {
 		log.WithError(err).Error("Error finding repos and subrepos: %v", err)
 	}
 
-	prompt, err := j.promptForQuery()
+	userPrompt, err := j.promptForQuery()
 	if err != nil {
 		return err
 	}
 
-	prompt = j.prepareGoPrompt(prompt)
+	prompt := userPrompt
 
 	stepsOrder, err := j.getStepFromFileName()
 	if err != nil {
@@ -117,6 +117,7 @@ func (j *job) run() error {
 	}
 
 	for _, stepEntry := range stepsOrder {
+		log.Println("current step:", stepEntry.ValidStep)
 
 		j.currentStep = stepEntry.ValidStep
 		j.currentFileName = j.fileName
@@ -125,7 +126,7 @@ func (j *job) run() error {
 			j.currentStep == stepVerifyTestPrompt ||
 			j.currentStep == stepVerifySwaggerPrompt {
 
-			verifyPrompt := j.getPromptForVerifyPrompt(prompt)
+			verifyPrompt := j.getPromptForVerifyPrompt(userPrompt)
 
 			log.Infof("\nprompt: "+blue("%s")+"\n\n", verifyPrompt)
 
@@ -141,14 +142,12 @@ func (j *job) run() error {
 			continue
 
 		} else if j.currentStep == stepProjectStructuring {
-			// si il y a plus que deux dossiers dans le repo sélectionné, nous ne faisons rien.
-			nbFolders, err := j.countDirectories()
-			if err != nil || nbFolders > 2 {
-				continue
-			}
-			prompt = j.getPromptToAskProjectStructuring(prompt)
+			log.Infof("j.currentStep == stepProjectStructuring")
+			prompt = j.getPromptToAskProjectStructuring(userPrompt)
 
 		} else if j.currentStep == stepStart {
+
+			prompt = j.prepareGoPrompt(userPrompt)
 
 			fileContent := string(j.currentSrcSource)
 			if len(fileContent) > 50 {
@@ -157,29 +156,11 @@ func (j *job) run() error {
 
 		} else if j.currentStep == stepAddTest {
 
-			fileContent := string(j.currentSrcTest)
-			if err != nil {
-				fmt.Println(j.t("Error retrieving the name of the contents of the current file"), err)
-				return err
-			}
-
-			prompt = j.t("I have some Golang code") + ":"
-			prompt += "\n\n" + string(fileContent)
-			prompt += "\n\n" + j.t("I would like to enrich these functions with unit tests") + ":"
-			prompt += "\n\n" + j.printTestsFuncName()
-			prompt += "\n\n" + j.t("Can you generate the tests for the nominal cases as well as the error cases? My goal is to ensure comprehensive coverage, particularly for:\n\nExpected success scenarios (nominal cases)\nError handling scenarios\nPlease structure the tests to be easily readable, using t.Run to name each test case.")
-			prompt += "\n\n" + j.t("Reply without comment or explanation")
+			prompt = j.getPromptToAskTestsCreation()
 
 		} else if j.currentStep == stepStartTest {
 
-			prompt += ".\n\n" + j.t("Determines whether the problem is in the test file or the source file. Generates a concise response that specifies the file to modify in the form") +
-				": \"MODIFY: <function or section name> (source <folder/filename.go>, not test file)\" or \"MODIFY: <function or section name> (test file)\"." +
-				j.t("Then provide the corrected code in the form") + ": \"CODE: <corrected code>\".\n\n"
-
-			fileContent := string(j.currentSrcTest)
-			if len(fileContent) > 50 {
-				prompt += ".\n\n" + j.t("Here is the Golang code") + " :\n\n" + fileContent
-			}
+			prompt = j.getPromptToAskTestCorrection()
 
 		} else {
 			prompt = j.t(stepEntry.Prompt)
@@ -193,6 +174,7 @@ func (j *job) run() error {
 		}
 
 		for attempt := 1; attempt <= j.maxAttempts; attempt++ {
+			log.Println("attempt:", attempt)
 			log.Infof("\nprompt: "+blue("%s")+"\n\n", prompt)
 
 			code, err := j.callIA(prompt)
@@ -206,10 +188,13 @@ func (j *job) run() error {
 			var output string
 
 			if j.currentStep == stepProjectStructuring {
-
+				log.Println("project structuring")
 				parseListFolders := j.parseListFolders(code)
 				j.createFoldersFromList(parseListFolders)
-				continue
+				if err := j.findReposAndSubRepos(); err != nil {
+					log.WithError(err).Error("Error finding repos and subrepos: %v", err)
+				}
+				break
 
 			} else if j.currentStep == stepStart {
 
@@ -287,24 +272,17 @@ func (j *job) runStepStart(stepEntry StepWithError, code string) (prompt, output
 			return
 		}
 
-		var codeModified []byte
-		log.Infof("API parsed response:\n\n"+green("\"%s\"")+"\n\n", codeReceived)
-		codeModified, err = j.stepFixCode(file, codeReceived)
-		if err != nil {
-			log.WithError(err).Error(j.t("Error to get code modified"))
-			return
-		}
-
-		if err = j.writeFile(file, codeModified); err != nil {
-			log.WithError(err).Error(j.t("Error updating file"))
+		if err = j.fixCodeAndWriteFile(file, codeReceived); err != nil {
+			log.WithError(err).Error(j.t("Error fixing code and writing file"))
 			return
 		}
 	}
 
 	j.waitingPrompt()
 
-	// we move on to executing the files for the tests.
+	// we move on to executing the files.
 	for file, codeReceived := range filesAndCode {
+		j.listFiles = append(j.listFiles, file)
 		j.currentFileName = file
 		j.currentSourceFileName = file
 		j.fileName = file
@@ -346,6 +324,25 @@ func (j *job) runStepStart(stepEntry StepWithError, code string) (prompt, output
 			if mustContinue {
 				continue
 			}
+
+			// dans le cas ou tout se passe bien avec les tests, on ne fait plus rien
+			if j.currentFileName == j.currentTestFileName {
+				log.Println(j.t("Code output")+": `", output, "`")
+				break
+			}
+
+			// on lance la génération des tests
+			j.currentFileName = j.currentTestFileName
+			attempt = 0
+
+			src, err := j.createNewTestFile()
+			if err != nil {
+				log.WithError(err).Error(j.t("Error creating test file"))
+				break
+			}
+			j.currentSrcTest = src
+
+			prompt = j.getPromptToAskTestsCreation()
 		}
 	}
 	return
@@ -398,6 +395,7 @@ func (j *job) createFoldersFromList(paths []string) {
 				fmt.Printf("Erreur lors de la fermeture du fichier %s : %v\n", fullPath, err)
 			}
 			fmt.Printf("Fichier créé : %s\n", fullPath)
+			j.listFiles = append(j.listFiles, fullPath)
 		}
 	}
 }

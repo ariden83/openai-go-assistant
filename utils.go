@@ -101,8 +101,6 @@ func sanitizePackageName(dirName string) string {
 func (j *job) findReposAndSubRepos() error {
 	currentPath := j.fileDir
 
-	log.Infof("currentPath:\n%s", currentPath)
-
 	var basePath string
 
 	// Remonter jusqu'à trouver go.mod, main.go ou atteindre la racine
@@ -131,8 +129,6 @@ func (j *job) findReposAndSubRepos() error {
 		currentPath = filepath.Dir(currentPath)
 	}
 
-	log.Infof("currentPath v2:\n%s", currentPath)
-
 	// Parcourir tous les sous-répertoires à partir de basePath
 	var repos []string
 	err := filepath.Walk(basePath, func(path string, info os.FileInfo, err error) error {
@@ -153,7 +149,6 @@ func (j *job) findReposAndSubRepos() error {
 		return fmt.Errorf("error walking the path %s: %w", basePath, err)
 	}
 
-	log.Infof("currentPath v3:\n%s", repos)
 	j.repoStructure = formatRepo(repos)
 	log.Infof("Found repositories and sub-repositories:\n%s", j.repoStructure)
 	return nil

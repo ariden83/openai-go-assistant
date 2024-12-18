@@ -41,19 +41,52 @@ func (j *job) splitFilesAndCode(response string) map[string]string {
 	return filesNameAndCode
 }
 
-func (j *job) parseListFolders(response string) []string {
-	var paths []string
-	scanner := bufio.NewScanner(strings.NewReader(response))
+func (j *job) parseListFolders(input string) []string {
+	input = strings.ReplaceAll(input, "```bash", "")
+	input = strings.ReplaceAll(input, "```", "")
 
+	var paths []string
+	stack := []string{} // Pile pour gérer les niveaux d'indentation
+
+	scanner := bufio.NewScanner(strings.NewReader(input))
 	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue // Ignorer les lignes vides ou les commentaires
+		line := scanner.Text()
+
+		// Ignorer les lignes vides ou les commentaires
+		if strings.TrimSpace(line) == "" || strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
 		}
-		// Extraire le chemin en ignorant les commentaires
-		path := strings.Split(line, "#")[0]
-		path = strings.TrimSpace(path)
-		paths = append(paths, path)
+
+		// Déterminer le niveau d'indentation
+		indentLevel := 0
+		for _, char := range line {
+			if char == ' ' || char == '\t' {
+				indentLevel++
+			} else {
+				break
+			}
+		}
+		indentLevel /= 2 // En supposant une indentation de 2 espaces par niveau
+
+		// Supprimer la pile jusqu'au bon niveau d'indentation
+		if len(stack) > indentLevel {
+			stack = stack[:indentLevel]
+		}
+
+		// Extraire le chemin sans les commentaires
+		line = strings.Split(line, "#")[0]
+		line = strings.TrimSpace(line)
+		line = strings.TrimLeft(line, "- ")
+		line = strings.Trim(line, "/") // Supprime les barres obliques autour
+
+		// Construire le chemin complet
+		fullPath := strings.Join(append(stack, line), "/")
+		paths = append(paths, fullPath)
+
+		// Ajouter à la pile si c'est un dossier (pas un fichier avec extension)
+		if !strings.Contains(line, ".") {
+			stack = append(stack, line)
+		}
 	}
 
 	return paths

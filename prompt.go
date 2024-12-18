@@ -30,9 +30,9 @@ func init() {
 
 // waitingPrompt displays a prompt to ask the user if they want to continue.
 func (j *job) waitingPrompt() {
-	if !j.validateEachStep {
+	/*if !j.validateEachStep {
 		return
-	}
+	}*/
 	prompt := promptui.Select{
 		Label: j.t("Continue ?"),
 		Items: []string{j.t("Yes"), j.t("No")},
@@ -63,7 +63,6 @@ func (j *job) archiPrompt() map[string]string {
 
 // prepareGoPrompt adds context to specify that the question is about Go code.
 func (j *job) prepareGoPrompt(userPrompt string) string {
-	// Ajouter le contexte pour spécifier que la question porte sur du code Go
 	goContextPrefix := j.t("Write code in Go to solve the following problem") + " :\n\n"
 
 	goContextSuffix := ".\n\n" +
